@@ -539,7 +539,7 @@
         </div>
 
         <form id="crewForm">
-          <div class="grid-2">
+          <div class="grid-3">
             <div class="field">
               <label for="firstName">Vorname <span class="required">*</span></label>
               <input id="firstName" name="firstName" type="text" placeholder="z. B. Max" required />
@@ -557,6 +557,22 @@
               <input id="weight" name="weight" type="number" min="35" max="180" step="1" placeholder="z. B. 75" required />
             </div>
 
+<div class="field">
+  <label for="heightCm">
+    Körpergröße in cm
+    <span class="required">*</span>
+  </label>
+  <input
+    id="heightCm"
+    name="heightCm"
+    type="number"
+    min="130"
+    max="220"
+    step="1"
+    placeholder="z. B. 180"
+    required />
+</div>
+            
             <div class="field">
               <label for="sprintExperience">Bisherige Sprintteilnahmen <span class="required">*</span></label>
               <select id="sprintExperience" name="sprintExperience" required>
