@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Die Saaligatoren – Admin</title>
+  <style>
+    :root {
+      --bg: #050607;
+      --panel: rgba(255, 255, 255, 0.075);
+      --line: rgba(255, 255, 255, 0.16);
+      --text: #f7f7f7;
+      --muted: #b9c0c9;
+      --green: #a6e300;
+      --orange: #ff6b35;
+      --shadow: 0 26px 80px rgba(0, 0, 0, 0.48);
+      --radius: 24px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 16% 8%, rgba(166, 227, 0, 0.13), transparent 25%),
+        radial-gradient(circle at 86% 22%, rgba(166, 227, 0, 0.08), transparent 28%),
+        linear-gradient(135deg, #050607 0%, #0a0d10 50%, #11151a 100%);
+      color: var(--text);
+      padding: 28px;
+    }
+
+    .page { width: min(1380px, 100%); margin: 0 auto; }
+
+    .header {
+      display: grid;
+      grid-template-columns: 260px 1fr auto;
+      gap: 28px;
+      align-items: center;
+      padding: 20px 0 26px;
+      border-bottom: 3px solid var(--green);
+      margin-bottom: 22px;
+    }
+
+    .logo-wrap {
+      background: #000;
+      border-radius: 22px;
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow: var(--shadow);
+    }
+
+    .logo-wrap img { display: block; width: 100%; height: auto; }
+
+    .headline h1 {
+      font-size: clamp(2.2rem, 4vw, 4.2rem);
+      line-height: 0.98;
+      letter-spacing: -0.055em;
+      text-transform: uppercase;
+      font-weight: 1000;
+    }
+
+    .headline span { color: var(--green); }
+
+    .admin-badge {
+      justify-self: end;
+      border: 1px solid rgba(166, 227, 0, 0.4);
+      background: rgba(166, 227, 0, 0.12);
+      color: var(--green);
+      border-radius: 999px;
+      padding: 10px 16px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(420px, 0.95fr) minmax(0, 1.25fr);
+      gap: 22px;
+      align-items: start;
+    }
+
+    .card {
+      background: linear-gradient(145deg, rgba(255,255,255,0.095), rgba(255,255,255,0.045));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .panel { padding: 24px; }
+
+    .panel-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 18px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(166, 227, 0, 0.38);
+    }
+
+    .panel-title h2 {
+      color: var(--green);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 1.35rem;
+    }
+
+    .panel-title p {
+      margin-top: 6px;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.95rem;
+    }
+
+    .date-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      margin-bottom: 16px;
+      align-items: end;
+    }
+
+    label {
+      font-weight: 850;
+      color: #fff;
+      font-size: 0.95rem;
+      display: grid;
+      gap: 7px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.34);
+      color: #fff;
+      border-radius: 12px;
+      padding: 12px 13px;
+      font-size: 1rem;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 4px rgba(166, 227, 0, 0.13);
+    }
+
+    button {
+      border: none;
+      border-radius: 13px;
+      padding: 13px 18px;
+      font-size: 0.96rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 1000;
+      background: linear-gradient(135deg, #c7ff2d, #8dcc00);
+      color: #050607;
+      cursor: pointer;
+      box-shadow: 0 18px 40px rgba(166, 227, 0, 0.18);
+      transition: 0.18s ease;
+      white-space: nowrap;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 24px 50px rgba(166, 227, 0, 0.28);
+    }
+
+    button:disabled {
+      opacity: 0.42;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .button-secondary {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: none;
+    }
+
+    .button-danger {
+      background: rgba(255,77,77,0.12);
+      color: #fff;
+      border: 1px solid rgba(255,77,77,0.38);
+      box-shadow: none;
+    }
+
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .stat {
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(0,0,0,0.28);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .stat.ready {
+      border-color: rgba(166, 227, 0, 0.48);
+      background: rgba(166, 227, 0, 0.12);
+    }
+
+    .stat.not-ready {
+      border-color: rgba(255, 107, 53, 0.42);
+      background: rgba(255, 107, 53, 0.10);
+    }
+
+    .stat strong { display: block; font-size: 1.45rem; color: var(--green); line-height: 1; margin-bottom: 6px; }
+    .stat span { color: var(--muted); font-size: 0.86rem; }
+
+
+    .key-panel {
+      margin-bottom: 16px;
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(166, 227, 0, 0.08);
+      border: 1px solid rgba(166, 227, 0, 0.24);
+    }
+
+    .key-panel textarea {
+      width: 100%;
+      min-height: 110px;
+      margin-top: 8px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.34);
+      color: #fff;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.82rem;
+      resize: vertical;
+      outline: none;
+    }
+
+    .key-panel textarea:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 4px rgba(166, 227, 0, 0.13);
+    }
+
+    .key-hint {
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.9rem;
+      margin-top: 6px;
+    }
+
+    .participant-list {
+      display: grid;
+      gap: 10px;
+      max-height: 560px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .person {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 13px;
+      border-radius: 16px;
+      background: rgba(0,0,0,0.26);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .person input { width: 22px; height: 22px; accent-color: var(--green); }
+    .person-name { font-weight: 900; }
+    .person-meta { margin-top: 3px; color: var(--muted); font-size: 0.84rem; }
+
+    .pill-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .pill {
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 800;
+      border: 1px solid rgba(255,255,255,0.11);
+    }
+
+    .pill.green {
+      background: rgba(166, 227, 0, 0.13);
+      border-color: rgba(166, 227, 0, 0.28);
+      color: var(--green);
+    }
+
+    .result-area { display: grid; gap: 16px; }
+
+    .balance-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+    }
+
+    .balance-card {
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(0,0,0,0.28);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .balance-card strong { display: block; color: var(--green); font-size: 1.2rem; margin-bottom: 4px; }
+    .balance-card span { color: var(--muted); font-size: 0.84rem; }
+
+    .boat-plan { display: grid; gap: 8px; }
+
+    .plan-row {
+      display: grid;
+      grid-template-columns: 74px 1fr 1fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .row-label {
+      display: grid;
+      place-items: center;
+      border-radius: 13px;
+      background: rgba(166, 227, 0, 0.13);
+      border: 1px solid rgba(166, 227, 0, 0.28);
+      color: var(--green);
+      font-weight: 1000;
+      text-transform: uppercase;
+      font-size: 0.78rem;
+    }
+
+    .seat-cell {
+      min-height: 58px;
+      padding: 11px 12px;
+      border-radius: 14px;
+      background: rgba(0,0,0,0.28);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .seat-side {
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+
+    .seat-name { font-weight: 900; color: #fff; }
+
+    .warning {
+      display: none;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(255, 107, 53, 0.12);
+      border: 1px solid rgba(255, 107, 53, 0.35);
+      color: #ffe7dc;
+      line-height: 1.45;
+      margin-bottom: 16px;
+    }
+
+    .empty-state {
+      padding: 34px 22px;
+      text-align: center;
+      border-radius: 18px;
+      background: rgba(0,0,0,0.24);
+      border: 1px dashed rgba(255,255,255,0.18);
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 1100px) {
+      .header, .layout { grid-template-columns: 1fr; }
+      .logo-wrap { max-width: 320px; }
+      .admin-badge { justify-self: start; }
+      .balance-grid, .stats { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 720px) {
+      body { padding: 16px; }
+      .date-row, .balance-grid, .stats, .plan-row { grid-template-columns: 1fr; }
+  
+    .key-panel {
+      margin-bottom: 16px;
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(166, 227, 0, 0.08);
+      border: 1px solid rgba(166, 227, 0, 0.24);
+    }
+
+    .key-panel textarea {
+      width: 100%;
+      min-height: 110px;
+      margin-top: 8px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(0,0,0,0.34);
+      color: #fff;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.82rem;
+      resize: vertical;
+      outline: none;
+    }
+
+    .key-panel textarea:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 4px rgba(166, 227, 0, 0.13);
+    }
+
+    .key-hint {
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.9rem;
+      margin-top: 6px;
+    }
+
+    .participant-list { max-height: none; }
+      .person { grid-template-columns: auto 1fr; }
+      .pill-row { grid-column: 1 / -1; justify-content: flex-start; }
+    }
+    .login-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(circle at 18% 8%, rgba(166, 227, 0, 0.13), transparent 25%),
+        linear-gradient(135deg, #050607 0%, #0a0d10 50%, #11151a 100%);
+    }
+
+    .login-box {
+      width: min(460px, 100%);
+      padding: 28px;
+      border-radius: 24px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.095), rgba(255,255,255,0.045));
+      border: 1px solid rgba(255,255,255,0.16);
+      box-shadow: 0 26px 80px rgba(0, 0, 0, 0.48);
+    }
+
+    .login-box h1 {
+      color: var(--green);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 1.6rem;
+      margin-bottom: 8px;
+    }
+
+    .login-box p {
+      color: var(--muted);
+      line-height: 1.45;
+      margin-bottom: 18px;
+    }
+
+    .login-error {
+      display: none;
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255,77,77,0.12);
+      border: 1px solid rgba(255,77,77,0.38);
+      color: #ffe7e7;
+    }
+
+  </style>
+</head>
+<body>
+  <div id="loginScreen" class="login-screen">
+    <form id="loginForm" class="login-box">
+      <h1>Admin Login</h1>
+      <p>Bitte Passwort eingeben. Der private Schlüssel wird danach weiterhin separat eingefügt.</p>
+      <label for="adminPassword">
+        Passwort
+        <input id="adminPassword" type="password" autocomplete="current-password" required />
+      </label>
+      <button type="submit" style="margin-top:16px; width:100%;">Einloggen</button>
+      <div id="loginError" class="login-error">Passwort stimmt nicht.</div>
+    </form>
+  </div>
+
+  <main class="page" id="adminPage" style="display:none;">
+    <header class="header">
+      <div class="logo-wrap">
+        <img src="saaligatoren_logo.PNG" alt="Die Saaligatoren" />
+      </div>
+
+      <div class="headline">
+        <h1>Adminbereich <span>Saaligatoren</span></h1>
+      </div>
+
+      <div class="admin-badge">Trainingsplanung</div>
+    </header>
+
+    <section class="layout">
+      <section class="card panel">
+        <div class="panel-title">
+          <div>
+            <h2>Anwesenheit wählen</h2>
+            <p>Wähle genau 20 Personen aus, die im Boot sitzen sollen. Gewichte werden hier bewusst nicht angezeigt.</p>
+          </div>
+        </div>
+
+        <div class="key-panel">
+          <label for="privateKeyInput">
+            Privaten Schlüssel einfügen
+            <textarea id="privateKeyInput" placeholder="Hier deinen privaten Schlüssel einfügen. Er wird nur lokal im Browser verwendet und nicht gespeichert."></textarea>
+          </label>
+          <p class="key-hint">Ohne privaten Schlüssel kann die Adminseite die verschlüsselten Gewichte nicht entschlüsseln und keinen Sitzplan berechnen.</p>
+        </div>
+
+        <div class="date-row">
+          <label>
+            Einsatz / Trainingstag / Einsatz
+            <input id="trainingDate" type="date" />
+          </label>
+          <button id="calculateBtn" disabled>Sitzplan berechnen</button>
+        </div>
+
+        <div class="toolbar">
+          <button class="button-secondary" id="selectAllBtn" type="button">Erste 20 auswählen</button>
+          <button class="button-secondary" id="selectNoneBtn" type="button">Alle abwählen</button>
+          <button class="button-danger" id="demoResetBtn" type="button">Alle Daten löschen</button>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><strong id="totalCount">0</strong><span>registriert</span></div>
+          <div class="stat" id="selectedStat"><strong id="selectedCount">0 / 20</strong><span>ausgewählt</span></div>
+          <div class="stat"><strong>20</strong><span>benötigt</span></div>
+        </div>
+
+        <div id="warning" class="warning"></div>
+        <div id="participantList" class="participant-list"></div>
+      </section>
+
+      <section class="card panel result-area">
+        <div class="panel-title">
+          <div>
+            <h2>Sitzverteilung</h2>
+            <p>Das Ergebnis nutzt interne Werte für Gewicht und Balance, zeigt aber keine Einzelgewichte an.</p>
+          </div>
+        </div>
+
+        <div class="balance-grid">
+          <div class="balance-card"><strong id="leftCount">–</strong><span>links besetzt</span></div>
+          <div class="balance-card"><strong id="rightCount">–</strong><span>rechts besetzt</span></div>
+          <div class="balance-card"><strong id="weightShare">–</strong><span>Gewichtsverteilung L/R</span></div>
+          <div class="balance-card"><strong id="weightDiff">–</strong><span>Differenz</span></div>
+          <div class="balance-card"><strong id="balanceRating">–</strong><span>Balance</span></div>
+          <div class="balance-card"><strong id="frontRating">–</strong><span>Front/Takt</span></div>
+        </div>
+
+        <div id="resultHint" class="empty-state">
+          Wähle links genau 20 Personen aus und klicke auf „Sitzplan berechnen“.
+        </div>
+
+        <div id="boatPlan" class="boat-plan"></div>
+      </section>
+    </section>
+  </main>
+
+
+  <script>
+    const ADMIN_PASSWORD_HASH = "8a41fc4bd36136fc229735b8a9dbaeb4a9acec6b7b95548740f279b8af8ebb25";
+
+    async function sha256Hex(value) {
+      const encoded = new TextEncoder().encode(value);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+      return Array.from(new Uint8Array(hashBuffer))
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('');
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const password = document.getElementById('adminPassword').value;
+      const hash = await sha256Hex(password);
+
+      if (hash === ADMIN_PASSWORD_HASH) {
+        sessionStorage.setItem('saaligatorenAdminLogin', 'ok');
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('adminPage').style.display = 'block';
+      } else {
+        document.getElementById('loginError').style.display = 'block';
+        document.getElementById('adminPassword').value = '';
+        document.getElementById('adminPassword').focus();
+      }
+    });
+
+    if (sessionStorage.getItem('saaligatorenAdminLogin') === 'ok') {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('adminPage').style.display = 'block';
+    }
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = "https://uzyvltoqbcdckhkfmped.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_hMvUEZXbCQAewmBHTKQF_w_7RvVZQqv";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const state = {
+      participants: [],
+      selectedIds: new Set()
+    };
+
+    const participantList = document.getElementById('participantList');
+    const totalCount = document.getElementById('totalCount');
+    const selectedCount = document.getElementById('selectedCount');
+    const selectedStat = document.getElementById('selectedStat');
+    const calculateBtn = document.getElementById('calculateBtn');
+    const warning = document.getElementById('warning');
+    const boatPlan = document.getElementById('boatPlan');
+    const resultHint = document.getElementById('resultHint');
+    const privateKeyInput = document.getElementById('privateKeyInput');
+
+    function fullName(person) {
+      return `${person.firstName} ${person.lastName}`;
+    }
+
+    function sideLabel(side) {
+      if (side === 'links') return 'links';
+      if (side === 'rechts') return 'rechts';
+      return 'flexibel';
+    }
+
+    function sprintLabel(value) {
+      return value === '5plus' ? '5+' : value;
+    }
+
+    function base64ToBuffer(base64) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes.buffer;
+    }
+
+    async function importPrivateKey(privateKeyText) {
+      let jwk;
+      try {
+        jwk = JSON.parse(privateKeyText);
+      } catch (error) {
+        throw new Error('Der private Schlüssel ist kein gültiges JSON.');
+      }
+
+      return crypto.subtle.importKey(
+        'jwk',
+        jwk,
+        {
+          name: 'RSA-OAEP',
+          hash: 'SHA-256'
+        },
+        false,
+        ['decrypt']
+      );
+    }
+
+    async function decryptWeight(encryptedWeight, privateKey) {
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'RSA-OAEP' },
+        privateKey,
+        base64ToBuffer(encryptedWeight)
+      );
+      const text = new TextDecoder().decode(decrypted);
+      const weight = Number(text);
+      if (!Number.isFinite(weight)) throw new Error('Ein Gewicht konnte nicht entschlüsselt werden.');
+      return weight;
+    }
+
+    function updateSelectionStatus() {
+      const count = state.selectedIds.size;
+      selectedCount.textContent = `${count} / 20`;
+      calculateBtn.disabled = count !== 20;
+      selectedStat.classList.toggle('ready', count === 20);
+      selectedStat.classList.toggle('not-ready', count !== 20);
+
+      warning.style.display = 'none';
+      if (count < 20) {
+        warning.textContent = `Aktuell sind ${count} Personen ausgewählt. Für die Berechnung müssen genau 20 Personen ausgewählt sein.`;
+        warning.style.display = 'block';
+      } else if (count > 20) {
+        warning.textContent = `Aktuell sind ${count} Personen ausgewählt. Bitte wähle maximal 20 Personen aus.`;
+        warning.style.display = 'block';
+      }
+    }
+
+    function renderParticipants() {
+      totalCount.textContent = state.participants.length;
+      updateSelectionStatus();
+
+      if (state.participants.length === 0) {
+        participantList.innerHTML = '<div class="empty-state">Noch keine Personen erfasst. Sobald Eingaben über die Formularseite gespeichert wurden, erscheinen sie hier.</div>';
+        return;
+      }
+
+      participantList.innerHTML = state.participants.map(person => {
+        const checked = state.selectedIds.has(person.id) ? 'checked' : '';
+        return `
+          <label class="person">
+            <input type="checkbox" value="${person.id}" ${checked} />
+            <div>
+              <div class="person-name">${fullName(person)}</div>
+              <div class="person-meta">${sideLabel(person.side)} · ${sprintLabel(person.sprintExperience)} Sprintteilnahme(n) · Takt: ${person.strokeLead}</div>
+            </div>
+            <div class="pill-row">
+              <span class="pill green">K${person.strength}</span>
+              <span class="pill">A${person.endurance}</span>
+              <span class="pill">R${person.rhythm}</span>
+            </div>
+          </label>
+        `;
+      }).join('');
+
+      participantList.querySelectorAll('input[type="checkbox"]').forEach(box => {
+        box.addEventListener('change', () => {
+          const id = box.value;
+
+          if (box.checked && state.selectedIds.size >= 20) {
+            box.checked = false;
+            warning.textContent = 'Es können maximal 20 Personen ausgewählt werden.';
+            warning.style.display = 'block';
+            return;
+          }
+
+          if (box.checked) state.selectedIds.add(id);
+          else state.selectedIds.delete(id);
+          updateSelectionStatus();
+        });
+      });
+    }
+
+    async function loadParticipants() {
+      try {
+        const { data, error } = await supabaseClient
+          .from('participants')
+          .select('id, first_name, last_name, weight_encrypted, sprint_experience, side, switch_possible, stroke_lead, strength, endurance, rhythm')
+          .order('last_name', { ascending: true })
+          .order('first_name', { ascending: true });
+
+        if (error) throw error;
+
+        state.participants = (data || []).map(row => ({
+          id: row.id,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          weightEncrypted: row.weight_encrypted,
+          sprintExperience: row.sprint_experience,
+          side: row.side,
+          switchPossible: row.switch_possible,
+          strokeLead: row.stroke_lead,
+          strength: Number(row.strength),
+          endurance: Number(row.endurance),
+          rhythm: Number(row.rhythm)
+        }));
+
+        state.selectedIds = new Set(state.participants.slice(0, 20).map(p => p.id));
+        renderParticipants();
+      } catch (error) {
+        warning.textContent = 'Fehler beim Laden: ' + error.message;
+        warning.style.display = 'block';
+      }
+    }
+
+    function scoreMiddle(person) {
+      return person.weight * 1.1 + person.strength * 18 + person.endurance * 9;
+    }
+
+    function experienceNumber(value) {
+      if (value === '5plus') return 5;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function scoreFront(person) {
+      const leadBonus = person.strokeLead === 'ja' ? 25 : person.strokeLead === 'vielleicht' ? 10 : 0;
+      return person.rhythm * 26 + experienceNumber(person.sprintExperience) * 5 + leadBonus - person.weight * 0.15;
+    }
+
+    function scoreBack(person) {
+      return experienceNumber(person.sprintExperience) * 12 + person.endurance * 8 + person.rhythm * 6 + person.weight * 0.12;
+    }
+
+    function assignSides(rows) {
+      let leftWeight = 0;
+      let rightWeight = 0;
+
+      return rows.map(pair => {
+        const [a, b] = pair;
+        if (!a || !b) return { left: a || null, right: b || null };
+
+        const aPrefersLeft = a.side === 'links';
+        const aPrefersRight = a.side === 'rechts';
+        const bPrefersLeft = b.side === 'links';
+        const bPrefersRight = b.side === 'rechts';
+
+        let left = a;
+        let right = b;
+
+        if (aPrefersRight && !bPrefersRight) {
+          left = b;
+          right = a;
+        } else if (bPrefersLeft && !aPrefersLeft) {
+          left = b;
+          right = a;
+        } else {
+          const diffNormal = Math.abs((leftWeight + a.weight) - (rightWeight + b.weight));
+          const diffSwap = Math.abs((leftWeight + b.weight) - (rightWeight + a.weight));
+          if (diffSwap < diffNormal) {
+            left = b;
+            right = a;
+          }
+        }
+
+        leftWeight += left.weight;
+        rightWeight += right.weight;
+        return { left, right };
+      });
+    }
+
+    function buildPlan(selected) {
+      const pool = [...selected];
+      const rows = Array.from({ length: 10 }, () => []);
+
+      const front = [...pool].sort((a, b) => scoreFront(b) - scoreFront(a)).slice(0, 4);
+      front.forEach(p => pool.splice(pool.findIndex(x => x.id === p.id), 1));
+
+      const back = [...pool].sort((a, b) => scoreBack(b) - scoreBack(a)).slice(0, 4);
+      back.forEach(p => pool.splice(pool.findIndex(x => x.id === p.id), 1));
+
+      const middle = [...pool].sort((a, b) => scoreMiddle(b) - scoreMiddle(a));
+
+      rows[0].push(front[0], front[1]);
+      rows[1].push(front[2], front[3]);
+      rows[8].push(back[0], back[1]);
+      rows[9].push(back[2], back[3]);
+
+      const middleRowOrder = [4, 5, 3, 6, 2, 7];
+      let index = 0;
+      middleRowOrder.forEach(rowIndex => {
+        rows[rowIndex].push(middle[index], middle[index + 1]);
+        index += 2;
+      });
+
+      return assignSides(rows);
+    }
+
+    function renderPlan(plan) {
+      resultHint.style.display = 'none';
+      boatPlan.innerHTML = '';
+
+      plan.forEach((row, index) => {
+        const leftName = row.left ? fullName(row.left) : 'frei';
+        const rightName = row.right ? fullName(row.right) : 'frei';
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'plan-row';
+        rowDiv.innerHTML = `
+          <div class="row-label">Reihe ${index + 1}</div>
+          <div class="seat-cell">
+            <div class="seat-side">Links</div>
+            <div class="seat-name">${leftName}</div>
+          </div>
+          <div class="seat-cell">
+            <div class="seat-side">Rechts</div>
+            <div class="seat-name">${rightName}</div>
+          </div>
+        `;
+        boatPlan.appendChild(rowDiv);
+      });
+
+      const left = plan.reduce((sum, row) => sum + (row.left ? 1 : 0), 0);
+      const right = plan.reduce((sum, row) => sum + (row.right ? 1 : 0), 0);
+      const leftWeight = plan.reduce((sum, row) => sum + (row.left ? row.left.weight : 0), 0);
+      const rightWeight = plan.reduce((sum, row) => sum + (row.right ? row.right.weight : 0), 0);
+      const diff = Math.abs(leftWeight - rightWeight);
+      const totalWeight = leftWeight + rightWeight;
+      const leftPercent = totalWeight > 0 ? (leftWeight / totalWeight * 100).toFixed(1) : '0.0';
+      const rightPercent = totalWeight > 0 ? (rightWeight / totalWeight * 100).toFixed(1) : '0.0';
+      const frontQuality = plan.slice(0, 2).flatMap(r => [r.left, r.right]).filter(Boolean).reduce((sum, p) => sum + p.rhythm, 0);
+
+      document.getElementById('leftCount').textContent = left;
+      document.getElementById('rightCount').textContent = right;
+      document.getElementById('weightShare').textContent = `${leftPercent} % / ${rightPercent} %`;
+      document.getElementById('weightDiff').textContent = `${Math.round(diff * 10) / 10} kg`;
+      document.getElementById('balanceRating').textContent = diff <= 10 ? 'sehr gut' : diff <= 25 ? 'gut' : 'prüfen';
+      document.getElementById('frontRating').textContent = frontQuality >= 11 ? 'stark' : frontQuality >= 9 ? 'gut' : 'prüfen';
+    }
+
+    async function calculatePlan() {
+      warning.style.display = 'none';
+
+      const selected = state.participants.filter(p => state.selectedIds.has(p.id));
+
+      if (selected.length !== 20) {
+        warning.textContent = `Aktuell sind ${selected.length} Personen ausgewählt. Für die Berechnung müssen genau 20 Personen ausgewählt sein.`;
+        warning.style.display = 'block';
+        return;
+      }
+
+      const privateKeyText = privateKeyInput.value.trim();
+      if (!privateKeyText) {
+        warning.textContent = 'Bitte füge zuerst den privaten Schlüssel ein.';
+        warning.style.display = 'block';
+        return;
+      }
+
+      try {
+        const privateKey = await importPrivateKey(privateKeyText);
+
+        for (const person of selected) {
+          if (!person.weightEncrypted) {
+            throw new Error(`${fullName(person)} hat kein verschlüsseltes Gewicht gespeichert.`);
+          }
+          person.weight = await decryptWeight(person.weightEncrypted, privateKey);
+        }
+
+        const plan = buildPlan(selected);
+        renderPlan(plan);
+      } catch (error) {
+        warning.textContent = 'Fehler bei der Entschlüsselung/Berechnung: ' + error.message;
+        warning.style.display = 'block';
+      }
+    }
+
+    document.getElementById('calculateBtn').addEventListener('click', calculatePlan);
+
+    document.getElementById('selectAllBtn').addEventListener('click', () => {
+      state.selectedIds.clear();
+      state.participants.slice(0, 20).forEach(p => state.selectedIds.add(p.id));
+      renderParticipants();
+    });
+
+    document.getElementById('selectNoneBtn').addEventListener('click', () => {
+      state.selectedIds.clear();
+      renderParticipants();
+    });
+
+    document.getElementById('demoResetBtn').addEventListener('click', async () => {
+      if (!confirm('Sollen wirklich alle erfassten Daten gelöscht werden?')) return;
+
+      try {
+        const { error } = await supabaseClient
+          .from('participants')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000');
+
+        if (error) throw error;
+
+        state.participants = [];
+        state.selectedIds.clear();
+        boatPlan.innerHTML = '';
+        resultHint.style.display = 'block';
+        document.getElementById('leftCount').textContent = '–';
+        document.getElementById('rightCount').textContent = '–';
+        document.getElementById('weightShare').textContent = '–';
+        document.getElementById('weightDiff').textContent = '–';
+        document.getElementById('balanceRating').textContent = '–';
+        document.getElementById('frontRating').textContent = '–';
+        renderParticipants();
+      } catch (error) {
+        warning.textContent = 'Fehler beim Löschen: ' + error.message;
+        warning.style.display = 'block';
+      }
+    });
+
+    document.getElementById('trainingDate').valueAsDate = new Date();
+    loadParticipants();
+  </script>
+
+</body>
+</html>
