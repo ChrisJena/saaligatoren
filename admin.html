@@ -373,6 +373,82 @@
       line-height: 1.5;
     }
 
+
+
+    .history-panel {
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(0,0,0,0.24);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .history-panel h3 {
+      color: var(--green);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 1.05rem;
+      margin-bottom: 10px;
+    }
+
+    .history-form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+
+    .history-status {
+      display: none;
+      margin-bottom: 12px;
+      padding: 11px 12px;
+      border-radius: 12px;
+      background: rgba(166, 227, 0, 0.09);
+      border: 1px solid rgba(166, 227, 0, 0.22);
+      color: #efffcb;
+      line-height: 1.4;
+      font-size: 0.9rem;
+    }
+
+    .history-list {
+      display: grid;
+      gap: 9px;
+      max-height: 320px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .history-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .history-title {
+      font-weight: 900;
+      color: #fff;
+    }
+
+    .history-meta {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.35;
+    }
+
+    .history-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
     @media (max-width: 1100px) {
       .header, .layout { grid-template-columns: 1fr; }
       .logo-wrap { max-width: 320px; }
@@ -468,43 +544,6 @@
       color: #ffe7e7;
     }
 
-    .current-plan-panel {
-      padding: 16px;
-      border-radius: 18px;
-      background: rgba(0,0,0,0.18);
-      border: 1px solid rgba(166, 227, 0, 0.22);
-    }
-
-    .current-plan-title {
-      color: var(--green);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      font-weight: 1000;
-      margin-bottom: 12px;
-    }
-
-    .top-actions {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      justify-content: flex-end;
-      flex-wrap: wrap;
-    }
-
-    .user-badge {
-      max-width: 240px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      border: 1px solid rgba(255,255,255,0.16);
-      background: rgba(255,255,255,0.08);
-      color: #fff;
-      border-radius: 999px;
-      padding: 10px 14px;
-      font-weight: 800;
-      font-size: 0.82rem;
-    }
-
   </style>
 </head>
 <body>
@@ -535,11 +574,14 @@
         <h1>Adminbereich <span>Saaligatoren</span></h1>
       </div>
 
-      <div class="top-actions">
-        <div class="admin-badge">Trainingsplanung</div>
-        <div id="userBadge" class="user-badge" title="Angemeldeter Benutzer">Angemeldet</div>
-        <button id="logoutBtn" class="button-secondary" type="button">Logout</button>
-      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+  <div class="admin-badge">Trainingsplanung</div>
+  <button id="logoutBtn"
+          class="button-secondary"
+          type="button">
+    Logout
+  </button>
+</div>
     </header>
 
     <section class="layout">
@@ -605,6 +647,21 @@
         </div>
 
         <div id="boatPlan" class="boat-plan"></div>
+
+        <div class="history-panel">
+          <h3>Trainingshistorie</h3>
+          <div class="history-form">
+            <label for="sessionTitle">
+              Bezeichnung speichern
+              <input id="sessionTitle" type="text" placeholder="z. B. Training 1, Regatta-Besetzung, Testlauf" />
+            </label>
+            <button id="saveSessionBtn" type="button" disabled>Sitzplan speichern</button>
+          </div>
+          <div id="historyStatus" class="history-status"></div>
+          <div id="historyList" class="history-list">
+            <div class="empty-state">Noch keine gespeicherten Sitzpläne vorhanden.</div>
+          </div>
+        </div>
       </section>
     </section>
   </main>
@@ -618,7 +675,10 @@
 
     const state = {
       participants: [],
-      selectedIds: new Set()
+      selectedIds: new Set(),
+      currentSeatPlan: null,
+      currentBalanceSummary: null,
+      sessions: []
     };
 
     const participantList = document.getElementById('participantList');
@@ -630,12 +690,15 @@
     const boatPlan = document.getElementById('boatPlan');
     const resultHint = document.getElementById('resultHint');
     const privateKeyInput = document.getElementById('privateKeyInput');
+    const sessionTitleInput = document.getElementById('sessionTitle');
+    const saveSessionBtn = document.getElementById('saveSessionBtn');
+    const historyStatus = document.getElementById('historyStatus');
+    const historyList = document.getElementById('historyList');
 
     const loginScreen = document.getElementById('loginScreen');
     const loginForm = document.getElementById('loginForm');
     const loginError = document.getElementById('loginError');
     const adminPage = document.getElementById('adminPage');
-    const userBadge = document.getElementById('userBadge');
 
     async function startAdminSession() {
       const { data: { session }, error } = await supabaseClient.auth.getSession();
@@ -649,8 +712,8 @@
       if (session) {
         loginScreen.style.display = 'none';
         adminPage.style.display = 'block';
-        if (session?.user?.email && userBadge) userBadge.textContent = session.user.email;
         await loadParticipants();
+        await loadTrainingSessions();
       }
     }
 
@@ -661,7 +724,7 @@
       const email = document.getElementById('adminEmail').value.trim();
       const password = document.getElementById('adminPassword').value;
 
-      const { data, error } = await supabaseClient.auth.signInWithPassword({
+      const { error } = await supabaseClient.auth.signInWithPassword({
         email,
         password
       });
@@ -676,9 +739,59 @@
 
       loginScreen.style.display = 'none';
       adminPage.style.display = 'block';
-      if (data?.user?.email && userBadge) userBadge.textContent = data.user.email;
       await loadParticipants();
+      await loadTrainingSessions();
     });
+
+    function setHistoryStatus(message, isError = false) {
+      if (!message) {
+        historyStatus.style.display = 'none';
+        historyStatus.textContent = '';
+        return;
+      }
+      historyStatus.textContent = message;
+      historyStatus.style.display = 'block';
+      historyStatus.style.background = isError ? 'rgba(255,77,77,0.12)' : 'rgba(166, 227, 0, 0.09)';
+      historyStatus.style.borderColor = isError ? 'rgba(255,77,77,0.38)' : 'rgba(166, 227, 0, 0.22)';
+      historyStatus.style.color = isError ? '#ffe7e7' : '#efffcb';
+    }
+
+    function formatGermanDate(value) {
+      if (!value) return 'ohne Datum';
+      const [year, month, day] = String(value).split('-');
+      if (!year || !month || !day) return value;
+      return `${day}.${month}.${year}`;
+    }
+
+    function serializeSeatPlan(plan) {
+      return plan.map((row, index) => ({
+        row: index + 1,
+        left: row.left ? { id: row.left.id, name: fullName(row.left), heightCm: row.left.heightCm || null } : null,
+        right: row.right ? { id: row.right.id, name: fullName(row.right), heightCm: row.right.heightCm || null } : null
+      }));
+    }
+
+    function createBalanceSummary(plan) {
+      const left = plan.reduce((sum, row) => sum + (row.left ? 1 : 0), 0);
+      const right = plan.reduce((sum, row) => sum + (row.right ? 1 : 0), 0);
+      const leftWeight = plan.reduce((sum, row) => sum + (row.left ? row.left.weight : 0), 0);
+      const rightWeight = plan.reduce((sum, row) => sum + (row.right ? row.right.weight : 0), 0);
+      const totalWeight = leftWeight + rightWeight;
+      const diff = Math.abs(leftWeight - rightWeight);
+      const leftPercent = totalWeight > 0 ? Number((leftWeight / totalWeight * 100).toFixed(1)) : 0;
+      const rightPercent = totalWeight > 0 ? Number((rightWeight / totalWeight * 100).toFixed(1)) : 0;
+      const frontQuality = plan.slice(0, 2).flatMap(r => [r.left, r.right]).filter(Boolean).reduce((sum, p) => sum + p.rhythm, 0);
+
+      return {
+        leftCount: left,
+        rightCount: right,
+        leftPercent,
+        rightPercent,
+        weightDiffKg: Math.round(diff * 10) / 10,
+        balanceRating: diff <= 10 ? 'sehr gut' : diff <= 25 ? 'gut' : 'prüfen',
+        frontRating: frontQuality >= 11 ? 'stark' : frontQuality >= 9 ? 'gut' : 'prüfen'
+      };
+    }
 
     function fullName(person) {
       return `${person.firstName} ${person.lastName}`;
@@ -841,20 +954,12 @@
     function scoreFront(person) {
       const leadBonus = person.strokeLead === 'ja' ? 25 : person.strokeLead === 'vielleicht' ? 10 : 0;
       const heightBonus = person.heightCm < 175 ? 12 : person.heightCm < 180 ? 6 : 0;
-      return person.rhythm * 26
-        + experienceNumber(person.sprintExperience) * 5
-        + leadBonus
-        + heightBonus
-        - person.weight * 0.15;
+      return person.rhythm * 26 + experienceNumber(person.sprintExperience) * 5 + leadBonus + heightBonus - person.weight * 0.15;
     }
 
     function scoreBack(person) {
       const heightBonus = person.heightCm > 190 ? 12 : person.heightCm > 185 ? 8 : person.heightCm > 180 ? 4 : 0;
-      return experienceNumber(person.sprintExperience) * 12
-        + person.endurance * 8
-        + person.rhythm * 6
-        + person.weight * 0.12
-        + heightBonus;
+      return experienceNumber(person.sprintExperience) * 12 + person.endurance * 8 + person.rhythm * 6 + person.weight * 0.12 + heightBonus;
     }
 
     function assignSides(rows) {
@@ -944,22 +1049,158 @@
         boatPlan.appendChild(rowDiv);
       });
 
-      const left = plan.reduce((sum, row) => sum + (row.left ? 1 : 0), 0);
-      const right = plan.reduce((sum, row) => sum + (row.right ? 1 : 0), 0);
-      const leftWeight = plan.reduce((sum, row) => sum + (row.left ? row.left.weight : 0), 0);
-      const rightWeight = plan.reduce((sum, row) => sum + (row.right ? row.right.weight : 0), 0);
-      const diff = Math.abs(leftWeight - rightWeight);
-      const totalWeight = leftWeight + rightWeight;
-      const leftPercent = totalWeight > 0 ? (leftWeight / totalWeight * 100).toFixed(1) : '0.0';
-      const rightPercent = totalWeight > 0 ? (rightWeight / totalWeight * 100).toFixed(1) : '0.0';
-      const frontQuality = plan.slice(0, 2).flatMap(r => [r.left, r.right]).filter(Boolean).reduce((sum, p) => sum + p.rhythm, 0);
+      const summary = createBalanceSummary(plan);
+      state.currentSeatPlan = serializeSeatPlan(plan);
+      state.currentBalanceSummary = summary;
+      saveSessionBtn.disabled = false;
+      setHistoryStatus('Sitzplan berechnet. Du kannst ihn jetzt in der Trainingshistorie speichern.');
 
-      document.getElementById('leftCount').textContent = left;
-      document.getElementById('rightCount').textContent = right;
-      document.getElementById('weightShare').textContent = `${leftPercent} % / ${rightPercent} %`;
-      document.getElementById('weightDiff').textContent = `${Math.round(diff * 10) / 10} kg`;
-      document.getElementById('balanceRating').textContent = diff <= 10 ? 'sehr gut' : diff <= 25 ? 'gut' : 'prüfen';
-      document.getElementById('frontRating').textContent = frontQuality >= 11 ? 'stark' : frontQuality >= 9 ? 'gut' : 'prüfen';
+      document.getElementById('leftCount').textContent = summary.leftCount;
+      document.getElementById('rightCount').textContent = summary.rightCount;
+      document.getElementById('weightShare').textContent = `${summary.leftPercent.toFixed(1)} % / ${summary.rightPercent.toFixed(1)} %`;
+      document.getElementById('weightDiff').textContent = `${summary.weightDiffKg} kg`;
+      document.getElementById('balanceRating').textContent = summary.balanceRating;
+      document.getElementById('frontRating').textContent = summary.frontRating;
+    }
+
+    function renderStoredPlan(seatPlan, summary = null) {
+      resultHint.style.display = 'none';
+      boatPlan.innerHTML = '';
+
+      (seatPlan || []).forEach(item => {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'plan-row';
+        rowDiv.innerHTML = `
+          <div class="row-label">Reihe ${item.row}</div>
+          <div class="seat-cell">
+            <div class="seat-side">Links</div>
+            <div class="seat-name">${item.left ? item.left.name : 'frei'}</div>
+          </div>
+          <div class="seat-cell">
+            <div class="seat-side">Rechts</div>
+            <div class="seat-name">${item.right ? item.right.name : 'frei'}</div>
+          </div>
+        `;
+        boatPlan.appendChild(rowDiv);
+      });
+
+      if (summary) {
+        document.getElementById('leftCount').textContent = summary.leftCount ?? '–';
+        document.getElementById('rightCount').textContent = summary.rightCount ?? '–';
+        document.getElementById('weightShare').textContent = `${Number(summary.leftPercent || 0).toFixed(1)} % / ${Number(summary.rightPercent || 0).toFixed(1)} %`;
+        document.getElementById('weightDiff').textContent = `${summary.weightDiffKg ?? '–'} kg`;
+        document.getElementById('balanceRating').textContent = summary.balanceRating ?? '–';
+        document.getElementById('frontRating').textContent = summary.frontRating ?? '–';
+      }
+    }
+
+    function renderTrainingSessions() {
+      if (!state.sessions.length) {
+        historyList.innerHTML = '<div class="empty-state">Noch keine gespeicherten Sitzpläne vorhanden.</div>';
+        return;
+      }
+
+      historyList.innerHTML = state.sessions.map(session => {
+        const count = Array.isArray(session.selected_participant_ids) ? session.selected_participant_ids.length : 0;
+        const summary = session.balance_summary || {};
+        const balance = summary.balanceRating ? ` · Balance: ${summary.balanceRating}` : '';
+        return `
+          <div class="history-item">
+            <div>
+              <div class="history-title">${session.title}</div>
+              <div class="history-meta">${formatGermanDate(session.training_date)} · ${count} Personen${balance}</div>
+            </div>
+            <div class="history-actions">
+              <button class="button-secondary" type="button" data-action="view" data-id="${session.id}">Anzeigen</button>
+              <button class="button-danger" type="button" data-action="delete" data-id="${session.id}">Löschen</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      historyList.querySelectorAll('button[data-action="view"]').forEach(button => {
+        button.addEventListener('click', () => {
+          const session = state.sessions.find(item => item.id === button.dataset.id);
+          if (!session) return;
+          renderStoredPlan(session.seat_plan, session.balance_summary);
+          setHistoryStatus(`Gespeicherter Sitzplan „${session.title}“ wurde angezeigt.`);
+        });
+      });
+
+      historyList.querySelectorAll('button[data-action="delete"]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const session = state.sessions.find(item => item.id === button.dataset.id);
+          if (!session) return;
+          if (!confirm(`Sitzplan „${session.title}“ wirklich löschen?`)) return;
+          await deleteTrainingSession(session.id);
+        });
+      });
+    }
+
+    async function loadTrainingSessions() {
+      try {
+        const { data, error } = await supabaseClient
+          .from('training_sessions')
+          .select('id, title, training_date, selected_participant_ids, seat_plan, balance_summary, created_at')
+          .order('training_date', { ascending: false })
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        state.sessions = data || [];
+        renderTrainingSessions();
+      } catch (error) {
+        setHistoryStatus('Trainingshistorie konnte nicht geladen werden: ' + error.message, true);
+      }
+    }
+
+    async function saveCurrentSession() {
+      if (!state.currentSeatPlan || !state.currentBalanceSummary) {
+        setHistoryStatus('Bitte zuerst einen Sitzplan berechnen.', true);
+        return;
+      }
+
+      const trainingDate = document.getElementById('trainingDate').value;
+      if (!trainingDate) {
+        setHistoryStatus('Bitte zuerst einen Trainingstag auswählen.', true);
+        return;
+      }
+
+      const title = sessionTitleInput.value.trim() || `Sitzplan ${formatGermanDate(trainingDate)}`;
+      const selectedIds = Array.from(state.selectedIds);
+
+      try {
+        const { error } = await supabaseClient
+          .from('training_sessions')
+          .insert([{
+            title,
+            training_date: trainingDate,
+            selected_participant_ids: selectedIds,
+            seat_plan: state.currentSeatPlan,
+            balance_summary: state.currentBalanceSummary
+          }]);
+
+        if (error) throw error;
+        sessionTitleInput.value = '';
+        setHistoryStatus(`Sitzplan „${title}“ wurde gespeichert.`);
+        await loadTrainingSessions();
+      } catch (error) {
+        setHistoryStatus('Sitzplan konnte nicht gespeichert werden: ' + error.message, true);
+      }
+    }
+
+    async function deleteTrainingSession(sessionId) {
+      try {
+        const { error } = await supabaseClient
+          .from('training_sessions')
+          .delete()
+          .eq('id', sessionId);
+
+        if (error) throw error;
+        setHistoryStatus('Gespeicherter Sitzplan wurde gelöscht.');
+        await loadTrainingSessions();
+      } catch (error) {
+        setHistoryStatus('Sitzplan konnte nicht gelöscht werden: ' + error.message, true);
+      }
     }
 
     async function calculatePlan() {
@@ -997,6 +1238,8 @@
         warning.style.display = 'block';
       }
     }
+
+    saveSessionBtn.addEventListener('click', saveCurrentSession);
 
     document.getElementById('calculateBtn').addEventListener('click', calculatePlan);
 
@@ -1038,13 +1281,15 @@
         warning.style.display = 'block';
       }
     });
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
 
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
-      await supabaseClient.auth.signOut();
-      sessionStorage.clear();
-      location.reload();
-    });
+  await supabaseClient.auth.signOut();
 
+  sessionStorage.clear();
+
+  location.reload();
+
+});
     document.getElementById('trainingDate').valueAsDate = new Date();
     startAdminSession();
   </script>
