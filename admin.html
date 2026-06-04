@@ -766,7 +766,7 @@
             <input type="checkbox" value="${person.id}" ${checked} />
             <div>
               <div class="person-name">${fullName(person)}</div>
-              <div class="person-meta">${sideLabel(person.side)} · ${sprintLabel(person.sprintExperience)} Sprintteilnahme(n) · Takt: ${person.strokeLead}</div>
+              <div class="person-meta">${person.heightCm} cm · ${sideLabel(person.side)} · ${sprintLabel(person.sprintExperience)} Sprintteilnahme(n) · Takt: ${person.strokeLead}</div>
             </div>
             <div class="pill-row">
               <span class="pill green">K${person.strength}</span>
@@ -799,7 +799,7 @@
       try {
         const { data, error } = await supabaseClient
           .from('participants')
-          .select('id, first_name, last_name, weight_encrypted, sprint_experience, side, switch_possible, stroke_lead, strength, endurance, rhythm')
+          .select('id, first_name, last_name, height_cm, weight_encrypted, sprint_experience, side, switch_possible, stroke_lead, strength, endurance, rhythm')
           .order('last_name', { ascending: true })
           .order('first_name', { ascending: true });
 
@@ -809,6 +809,7 @@
           id: row.id,
           firstName: row.first_name,
           lastName: row.last_name,
+          heightCm: Number(row.height_cm || 175),
           weightEncrypted: row.weight_encrypted,
           sprintExperience: row.sprint_experience,
           side: row.side,
@@ -839,11 +840,21 @@
 
     function scoreFront(person) {
       const leadBonus = person.strokeLead === 'ja' ? 25 : person.strokeLead === 'vielleicht' ? 10 : 0;
-      return person.rhythm * 26 + experienceNumber(person.sprintExperience) * 5 + leadBonus - person.weight * 0.15;
+      const heightBonus = person.heightCm < 175 ? 12 : person.heightCm < 180 ? 6 : 0;
+      return person.rhythm * 26
+        + experienceNumber(person.sprintExperience) * 5
+        + leadBonus
+        + heightBonus
+        - person.weight * 0.15;
     }
 
     function scoreBack(person) {
-      return experienceNumber(person.sprintExperience) * 12 + person.endurance * 8 + person.rhythm * 6 + person.weight * 0.12;
+      const heightBonus = person.heightCm > 190 ? 12 : person.heightCm > 185 ? 8 : person.heightCm > 180 ? 4 : 0;
+      return experienceNumber(person.sprintExperience) * 12
+        + person.endurance * 8
+        + person.rhythm * 6
+        + person.weight * 0.12
+        + heightBonus;
     }
 
     function assignSides(rows) {
@@ -1027,15 +1038,13 @@
         warning.style.display = 'block';
       }
     });
-  document.getElementById('logoutBtn').addEventListener('click', async () => {
 
-  await supabaseClient.auth.signOut();
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await supabaseClient.auth.signOut();
+      sessionStorage.clear();
+      location.reload();
+    });
 
-  sessionStorage.clear();
-
-  location.reload();
-
-});
     document.getElementById('trainingDate').valueAsDate = new Date();
     startAdminSession();
   </script>
