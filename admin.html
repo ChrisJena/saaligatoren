@@ -498,7 +498,14 @@
         <h1>Adminbereich <span>Saaligatoren</span></h1>
       </div>
 
-      <div class="admin-badge">Trainingsplanung</div>
+      <div style="display:flex; gap:10px; align-items:center;">
+  <div class="admin-badge">Trainingsplanung</div>
+  <button id="logoutBtn"
+          class="button-secondary"
+          type="button">
+    Logout
+  </button>
+</div>
     </header>
 
     <section class="layout">
@@ -983,7 +990,15 @@
         warning.style.display = 'block';
       }
     });
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
 
+  await supabaseClient.auth.signOut();
+
+  sessionStorage.clear();
+
+  location.reload();
+
+});
     document.getElementById('trainingDate').valueAsDate = new Date();
     startAdminSession();
   </script>
