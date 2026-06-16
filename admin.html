@@ -374,6 +374,61 @@
     }
 
 
+    .free-row-panel {
+      margin-bottom: 16px;
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(0,0,0,0.20);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .free-row-title {
+      color: var(--green);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 1000;
+      margin-bottom: 8px;
+    }
+
+    .free-row-hint {
+      color: var(--muted);
+      line-height: 1.4;
+      font-size: 0.88rem;
+      margin-bottom: 12px;
+    }
+
+    .free-row-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .free-row-choice {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .free-row-choice input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--green);
+    }
+
+    .free-row-choice:has(input:checked) {
+      background: rgba(166, 227, 0, 0.13);
+      border-color: rgba(166, 227, 0, 0.34);
+      color: var(--green);
+    }
+
 
     .history-panel {
       margin-top: 18px;
@@ -609,6 +664,23 @@
           <button id="calculateBtn" disabled>Sitzplan berechnen</button>
         </div>
 
+        <div class="free-row-panel">
+          <div class="free-row-title">Freie Reihen bei kleinerer Besetzung</div>
+          <div id="freeRowHint" class="free-row-hint">Bei 20 Personen bleiben keine Reihen frei. Bei 18 Personen bitte genau 1 Reihe, bei 16 Personen genau 2 Reihen freilassen.</div>
+          <div id="freeRowGrid" class="free-row-grid">
+            <label class="free-row-choice"><input type="checkbox" value="1" /> R1</label>
+            <label class="free-row-choice"><input type="checkbox" value="2" /> R2</label>
+            <label class="free-row-choice"><input type="checkbox" value="3" /> R3</label>
+            <label class="free-row-choice"><input type="checkbox" value="4" /> R4</label>
+            <label class="free-row-choice"><input type="checkbox" value="5" /> R5</label>
+            <label class="free-row-choice"><input type="checkbox" value="6" /> R6</label>
+            <label class="free-row-choice"><input type="checkbox" value="7" /> R7</label>
+            <label class="free-row-choice"><input type="checkbox" value="8" /> R8</label>
+            <label class="free-row-choice"><input type="checkbox" value="9" /> R9</label>
+            <label class="free-row-choice"><input type="checkbox" value="10" /> R10</label>
+          </div>
+        </div>
+
         <div class="toolbar">
           <button class="button-secondary" id="selectAllBtn" type="button">Erste 20 auswählen</button>
           <button class="button-secondary" id="selectNoneBtn" type="button">Alle abwählen</button>
@@ -678,7 +750,8 @@
       selectedIds: new Set(),
       currentSeatPlan: null,
       currentBalanceSummary: null,
-      sessions: []
+      sessions: [],
+      freeRows: new Set()
     };
 
     const participantList = document.getElementById('participantList');
@@ -694,6 +767,8 @@
     const saveSessionBtn = document.getElementById('saveSessionBtn');
     const historyStatus = document.getElementById('historyStatus');
     const historyList = document.getElementById('historyList');
+    const freeRowGrid = document.getElementById('freeRowGrid');
+    const freeRowHint = document.getElementById('freeRowHint');
 
     const loginScreen = document.getElementById('loginScreen');
     const loginForm = document.getElementById('loginForm');
@@ -780,7 +855,11 @@
       const diff = Math.abs(leftWeight - rightWeight);
       const leftPercent = totalWeight > 0 ? Number((leftWeight / totalWeight * 100).toFixed(1)) : 0;
       const rightPercent = totalWeight > 0 ? Number((rightWeight / totalWeight * 100).toFixed(1)) : 0;
-      const frontQuality = plan.slice(0, 2).flatMap(r => [r.left, r.right]).filter(Boolean).reduce((sum, p) => sum + p.rhythm, 0);
+      const activeRows = plan.filter(row => row.left && row.right);
+      const bankDiffs = activeRows.map(row => Math.abs(weightValue(row.left) - weightValue(row.right)));
+      const maxBankDiffKg = bankDiffs.length ? Math.round(Math.max(...bankDiffs) * 10) / 10 : 0;
+      const avgBankDiffKg = bankDiffs.length ? Math.round((bankDiffs.reduce((a, b) => a + b, 0) / bankDiffs.length) * 10) / 10 : 0;
+      const frontQuality = plan.filter(r => r.rowNumber <= 3).flatMap(r => [r.left, r.right]).filter(Boolean).reduce((sum, p) => sum + p.rhythm, 0);
 
       return {
         leftCount: left,
@@ -788,8 +867,10 @@
         leftPercent,
         rightPercent,
         weightDiffKg: Math.round(diff * 10) / 10,
-        balanceRating: diff <= 10 ? 'sehr gut' : diff <= 25 ? 'gut' : 'prüfen',
-        frontRating: frontQuality >= 11 ? 'stark' : frontQuality >= 9 ? 'gut' : 'prüfen'
+        maxBankDiffKg,
+        avgBankDiffKg,
+        balanceRating: diff <= 10 && maxBankDiffKg <= 12 ? 'sehr gut' : diff <= 25 && maxBankDiffKg <= 20 ? 'gut' : 'prüfen',
+        frontRating: frontQuality >= 16 ? 'stark' : frontQuality >= 12 ? 'gut' : 'prüfen'
       };
     }
 
@@ -846,19 +927,65 @@
       return weight;
     }
 
-    function updateSelectionStatus() {
+    function requiredFreeRowsForSelectionCount(count) {
+      const missingSeats = 20 - count;
+      if (missingSeats < 0 || missingSeats % 2 !== 0) return null;
+      const freeRowsNeeded = missingSeats / 2;
+      return freeRowsNeeded >= 0 && freeRowsNeeded <= 10 ? freeRowsNeeded : null;
+    }
+
+    function updateFreeRowControls() {
       const count = state.selectedIds.size;
+      const needed = requiredFreeRowsForSelectionCount(count);
+      const boxes = freeRowGrid.querySelectorAll('input[type="checkbox"]');
+
+      boxes.forEach(box => {
+        box.disabled = needed === null || needed === 0;
+        if (needed === 0 || needed === null) {
+          box.checked = false;
+        }
+      });
+
+      if (needed === 0) {
+        state.freeRows.clear();
+        freeRowHint.textContent = '20 Personen ausgewählt: Es bleibt keine Reihe frei.';
+      } else if (needed === 1) {
+        freeRowHint.textContent = '18 Personen ausgewählt: Bitte genau 1 freie Reihe markieren.';
+      } else if (needed === 2) {
+        freeRowHint.textContent = '16 Personen ausgewählt: Bitte genau 2 freie Reihen markieren.';
+      } else if (needed !== null) {
+        freeRowHint.textContent = `${count} Personen ausgewählt: Bitte genau ${needed} freie Reihen markieren.`;
+      } else {
+        freeRowHint.textContent = 'Für die Berechnung müssen 20, 18, 16 oder eine andere gerade Anzahl Personen ausgewählt sein, sodass ganze Reihen frei bleiben können.';
+      }
+
+      state.freeRows = new Set(
+        Array.from(boxes)
+          .filter(box => box.checked && !box.disabled)
+          .map(box => Number(box.value))
+      );
+    }
+
+    function updateSelectionStatus() {
+      updateFreeRowControls();
+      const count = state.selectedIds.size;
+      const freeRowsNeeded = requiredFreeRowsForSelectionCount(count);
+      const freeRowsSelected = state.freeRows.size;
+      const canCalculate = freeRowsNeeded !== null && freeRowsSelected === freeRowsNeeded && count > 0;
+
       selectedCount.textContent = `${count} / 20`;
-      calculateBtn.disabled = count !== 20;
-      selectedStat.classList.toggle('ready', count === 20);
-      selectedStat.classList.toggle('not-ready', count !== 20);
+      calculateBtn.disabled = !canCalculate;
+      selectedStat.classList.toggle('ready', canCalculate);
+      selectedStat.classList.toggle('not-ready', !canCalculate);
 
       warning.style.display = 'none';
-      if (count < 20) {
-        warning.textContent = `Aktuell sind ${count} Personen ausgewählt. Für die Berechnung müssen genau 20 Personen ausgewählt sein.`;
+      if (freeRowsNeeded === null) {
+        warning.textContent = `Aktuell sind ${count} Personen ausgewählt. Bitte wähle eine gerade Anzahl, bei der ganze Reihen frei bleiben können (z. B. 16, 18 oder 20).`;
         warning.style.display = 'block';
-      } else if (count > 20) {
-        warning.textContent = `Aktuell sind ${count} Personen ausgewählt. Bitte wähle maximal 20 Personen aus.`;
+      } else if (freeRowsSelected !== freeRowsNeeded) {
+        warning.textContent = freeRowsNeeded === 0
+          ? 'Bei 20 Personen darf keine freie Reihe markiert sein.'
+          : `Bitte markiere genau ${freeRowsNeeded} freie Reihe(n). Aktuell markiert: ${freeRowsSelected}.`;
         warning.style.display = 'block';
       }
     }
@@ -941,8 +1068,31 @@
       }
     }
 
+    function weightValue(person) {
+      return Number(person.weight || 0);
+    }
+
+    function heightValue(person) {
+      return Number(person.heightCm || 175);
+    }
+
+    function scoreFront(person) {
+      const exp = experienceNumber(person.sprintExperience);
+      const leadBonus = person.strokeLead === 'ja' ? 32 : person.strokeLead === 'vielleicht' ? 14 : 0;
+      const lightBonus = Math.max(0, 88 - weightValue(person)) * 0.9;
+      const compactBonus = Math.max(0, 180 - heightValue(person)) * 0.45;
+      return person.rhythm * 28 + exp * 13 + leadBonus + lightBonus + compactBonus - weightValue(person) * 0.18;
+    }
+
     function scoreMiddle(person) {
-      return person.weight * 1.1 + person.strength * 18 + person.endurance * 9;
+      return weightValue(person) * 1.55 + heightValue(person) * 0.55 + person.strength * 24 + person.endurance * 13;
+    }
+
+    function scoreBack(person) {
+      const exp = experienceNumber(person.sprintExperience);
+      const lowExperienceBonus = Math.max(0, 3 - exp) * 10;
+      const lightBonus = Math.max(0, 90 - weightValue(person)) * 0.55;
+      return person.endurance * 18 + person.rhythm * 10 + person.strength * 8 + lowExperienceBonus + lightBonus - weightValue(person) * 0.22;
     }
 
     function experienceNumber(value) {
@@ -951,24 +1101,67 @@
       return Number.isFinite(n) ? n : 0;
     }
 
-    function scoreFront(person) {
-      const leadBonus = person.strokeLead === 'ja' ? 25 : person.strokeLead === 'vielleicht' ? 10 : 0;
-      const heightBonus = person.heightCm < 175 ? 12 : person.heightCm < 180 ? 6 : 0;
-      return person.rhythm * 26 + experienceNumber(person.sprintExperience) * 5 + leadBonus + heightBonus - person.weight * 0.15;
+    function takeTop(pool, count, scorer) {
+      if (count <= 0) return [];
+      const picked = [...pool].sort((a, b) => scorer(b) - scorer(a)).slice(0, count);
+      picked.forEach(p => pool.splice(pool.findIndex(x => x.id === p.id), 1));
+      return picked;
     }
 
-    function scoreBack(person) {
-      const heightBonus = person.heightCm > 190 ? 12 : person.heightCm > 185 ? 8 : person.heightCm > 180 ? 4 : 0;
-      return experienceNumber(person.sprintExperience) * 12 + person.endurance * 8 + person.rhythm * 6 + person.weight * 0.12 + heightBonus;
+    function makeWeightPairs(people) {
+      const sorted = [...people].sort((a, b) => weightValue(b) - weightValue(a));
+      const pairs = [];
+      for (let i = 0; i < sorted.length; i += 2) {
+        pairs.push([sorted[i], sorted[i + 1]].filter(Boolean));
+      }
+      return pairs;
     }
 
-    function assignSides(rows) {
+    function averagePairWeight(pair) {
+      if (!pair || pair.length === 0) return 0;
+      return pair.reduce((sum, person) => sum + weightValue(person), 0) / pair.length;
+    }
+
+    function centralRowOrder(rows) {
+      const preferred = [5, 6, 4, 7, 3, 8, 2, 9, 1, 10];
+      return preferred.filter(row => rows.includes(row));
+    }
+
+    function assignPairsToRows(rowNumbers, people, zone) {
+      const rows = [];
+      if (!rowNumbers.length) return rows;
+
+      let pairs = makeWeightPairs(people);
+
+      if (zone === 'front') {
+        pairs = pairs.sort((a, b) => averagePairWeight(a) - averagePairWeight(b));
+        rowNumbers = [...rowNumbers].sort((a, b) => a - b);
+      } else if (zone === 'middle') {
+        pairs = pairs.sort((a, b) => averagePairWeight(b) - averagePairWeight(a));
+        rowNumbers = centralRowOrder(rowNumbers);
+      } else {
+        pairs = pairs.sort((a, b) => averagePairWeight(b) - averagePairWeight(a));
+        rowNumbers = [...rowNumbers].sort((a, b) => a - b);
+      }
+
+      rowNumbers.forEach((rowNumber, index) => {
+        rows.push({ rowNumber, pair: pairs[index] || [] });
+      });
+
+      return rows;
+    }
+
+    function assignSides(rowItems) {
       let leftWeight = 0;
       let rightWeight = 0;
 
-      return rows.map(pair => {
-        const [a, b] = pair;
-        if (!a || !b) return { left: a || null, right: b || null };
+      return rowItems.map(item => {
+        if (item.free) {
+          return { rowNumber: item.rowNumber, left: null, right: null, free: true };
+        }
+
+        const [a, b] = item.pair || [];
+        if (!a || !b) return { rowNumber: item.rowNumber, left: a || null, right: b || null };
 
         const aPrefersLeft = a.side === 'links';
         const aPrefersRight = a.side === 'rechts';
@@ -985,58 +1178,55 @@
           left = b;
           right = a;
         } else {
-          const diffNormal = Math.abs((leftWeight + a.weight) - (rightWeight + b.weight));
-          const diffSwap = Math.abs((leftWeight + b.weight) - (rightWeight + a.weight));
+          const diffNormal = Math.abs((leftWeight + weightValue(a)) - (rightWeight + weightValue(b)));
+          const diffSwap = Math.abs((leftWeight + weightValue(b)) - (rightWeight + weightValue(a)));
           if (diffSwap < diffNormal) {
             left = b;
             right = a;
           }
         }
 
-        leftWeight += left.weight;
-        rightWeight += right.weight;
-        return { left, right };
+        leftWeight += weightValue(left);
+        rightWeight += weightValue(right);
+        return { rowNumber: item.rowNumber, left, right };
       });
     }
 
     function buildPlan(selected) {
+      const freeRows = state.freeRows || new Set();
+      const allRows = Array.from({ length: 10 }, (_, index) => index + 1);
+      const activeRows = allRows.filter(row => !freeRows.has(row));
+
+      const frontRows = activeRows.filter(row => row >= 1 && row <= 3);
+      const middleRows = activeRows.filter(row => row >= 4 && row <= 7);
+      const backRows = activeRows.filter(row => row >= 8 && row <= 10);
+
       const pool = [...selected];
-      const rows = Array.from({ length: 10 }, () => []);
+      const front = takeTop(pool, frontRows.length * 2, scoreFront);
+      const middle = takeTop(pool, middleRows.length * 2, scoreMiddle);
+      const back = takeTop(pool, backRows.length * 2, scoreBack);
 
-      const front = [...pool].sort((a, b) => scoreFront(b) - scoreFront(a)).slice(0, 4);
-      front.forEach(p => pool.splice(pool.findIndex(x => x.id === p.id), 1));
+      const rowItems = [
+        ...assignPairsToRows(frontRows, front, 'front'),
+        ...assignPairsToRows(middleRows, middle, 'middle'),
+        ...assignPairsToRows(backRows, back, 'back'),
+        ...Array.from(freeRows).map(rowNumber => ({ rowNumber, free: true }))
+      ].sort((a, b) => a.rowNumber - b.rowNumber);
 
-      const back = [...pool].sort((a, b) => scoreBack(b) - scoreBack(a)).slice(0, 4);
-      back.forEach(p => pool.splice(pool.findIndex(x => x.id === p.id), 1));
-
-      const middle = [...pool].sort((a, b) => scoreMiddle(b) - scoreMiddle(a));
-
-      rows[0].push(front[0], front[1]);
-      rows[1].push(front[2], front[3]);
-      rows[8].push(back[0], back[1]);
-      rows[9].push(back[2], back[3]);
-
-      const middleRowOrder = [4, 5, 3, 6, 2, 7];
-      let index = 0;
-      middleRowOrder.forEach(rowIndex => {
-        rows[rowIndex].push(middle[index], middle[index + 1]);
-        index += 2;
-      });
-
-      return assignSides(rows);
+      return assignSides(rowItems);
     }
 
     function renderPlan(plan) {
       resultHint.style.display = 'none';
       boatPlan.innerHTML = '';
 
-      plan.forEach((row, index) => {
+      plan.forEach((row) => {
         const leftName = row.left ? fullName(row.left) : 'frei';
         const rightName = row.right ? fullName(row.right) : 'frei';
         const rowDiv = document.createElement('div');
         rowDiv.className = 'plan-row';
         rowDiv.innerHTML = `
-          <div class="row-label">Reihe ${index + 1}</div>
+          <div class="row-label">Reihe ${row.rowNumber}</div>
           <div class="seat-cell">
             <div class="seat-side">Links</div>
             <div class="seat-name">${leftName}</div>
@@ -1059,7 +1249,7 @@
       document.getElementById('rightCount').textContent = summary.rightCount;
       document.getElementById('weightShare').textContent = `${summary.leftPercent.toFixed(1)} % / ${summary.rightPercent.toFixed(1)} %`;
       document.getElementById('weightDiff').textContent = `${summary.weightDiffKg} kg`;
-      document.getElementById('balanceRating').textContent = summary.balanceRating;
+      document.getElementById('balanceRating').textContent = `${summary.balanceRating} / Bank max. ${summary.maxBankDiffKg} kg`;
       document.getElementById('frontRating').textContent = summary.frontRating;
     }
 
@@ -1089,7 +1279,7 @@
         document.getElementById('rightCount').textContent = summary.rightCount ?? '–';
         document.getElementById('weightShare').textContent = `${Number(summary.leftPercent || 0).toFixed(1)} % / ${Number(summary.rightPercent || 0).toFixed(1)} %`;
         document.getElementById('weightDiff').textContent = `${summary.weightDiffKg ?? '–'} kg`;
-        document.getElementById('balanceRating').textContent = summary.balanceRating ?? '–';
+        document.getElementById('balanceRating').textContent = summary.balanceRating ? `${summary.balanceRating} / Bank max. ${summary.maxBankDiffKg ?? '–'} kg` : '–';
         document.getElementById('frontRating').textContent = summary.frontRating ?? '–';
       }
     }
@@ -1208,8 +1398,9 @@
 
       const selected = state.participants.filter(p => state.selectedIds.has(p.id));
 
-      if (selected.length !== 20) {
-        warning.textContent = `Aktuell sind ${selected.length} Personen ausgewählt. Für die Berechnung müssen genau 20 Personen ausgewählt sein.`;
+      const freeRowsNeeded = requiredFreeRowsForSelectionCount(selected.length);
+      if (freeRowsNeeded === null || state.freeRows.size !== freeRowsNeeded) {
+        warning.textContent = `Aktuell sind ${selected.length} Personen ausgewählt. Bitte wähle dazu passend die freien Reihen aus.`;
         warning.style.display = 'block';
         return;
       }
@@ -1240,6 +1431,17 @@
     }
 
     saveSessionBtn.addEventListener('click', saveCurrentSession);
+
+    freeRowGrid.querySelectorAll('input[type="checkbox"]').forEach(box => {
+      box.addEventListener('change', () => {
+        const needed = requiredFreeRowsForSelectionCount(state.selectedIds.size);
+        const checkedBoxes = Array.from(freeRowGrid.querySelectorAll('input[type="checkbox"]:checked'));
+        if (needed !== null && checkedBoxes.length > needed) {
+          box.checked = false;
+        }
+        updateSelectionStatus();
+      });
+    });
 
     document.getElementById('calculateBtn').addEventListener('click', calculatePlan);
 
