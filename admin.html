@@ -751,7 +751,8 @@
       currentSeatPlan: null,
       currentBalanceSummary: null,
       sessions: [],
-      freeRows: new Set()
+      freeRows: new Set(),
+      algorithmWarning: ''
     };
 
     const participantList = document.getElementById('participantList');
@@ -840,7 +841,7 @@
 
     function serializeSeatPlan(plan) {
       return plan.map((row, index) => ({
-        row: index + 1,
+        row: row.rowNumber || index + 1,
         left: row.left ? { id: row.left.id, name: fullName(row.left), heightCm: row.left.heightCm || null } : null,
         right: row.right ? { id: row.right.id, name: fullName(row.right), heightCm: row.right.heightCm || null } : null
       }));
@@ -1076,6 +1077,15 @@
       return Number(person.heightCm || 175);
     }
 
+    function scoreStrokeAnchor(person) {
+      const exp = experienceNumber(person.sprintExperience);
+      const confirmedBonus = person.strokeLead === 'ja' ? 1000 : 0;
+      const maybeBonus = person.strokeLead === 'vielleicht' ? 150 : 0;
+      const lightBonus = Math.max(0, 88 - weightValue(person)) * 0.7;
+      const compactBonus = Math.max(0, 180 - heightValue(person)) * 0.35;
+      return confirmedBonus + maybeBonus + exp * 28 + person.rhythm * 22 + lightBonus + compactBonus - weightValue(person) * 0.12;
+    }
+
     function scoreFront(person) {
       const exp = experienceNumber(person.sprintExperience);
       const leadBonus = person.strokeLead === 'ja' ? 32 : person.strokeLead === 'vielleicht' ? 14 : 0;
@@ -1193,6 +1203,8 @@
     }
 
     function buildPlan(selected) {
+      state.algorithmWarning = '';
+
       const freeRows = state.freeRows || new Set();
       const allRows = Array.from({ length: 10 }, (_, index) => index + 1);
       const activeRows = allRows.filter(row => !freeRows.has(row));
@@ -1202,18 +1214,61 @@
       const backRows = activeRows.filter(row => row >= 8 && row <= 10);
 
       const pool = [...selected];
-      const front = takeTop(pool, frontRows.length * 2, scoreFront);
+      const rowItems = [];
+
+      // Harte Regel für Reihe 1: Wenn Reihe 1 aktiv ist, sitzen dort bestätigte Schlagpersonen.
+      // Ideal sind zwei Personen mit "ja". Bei nur einer bestätigten Schlagperson wird die zweite
+      // Position mit der besten verfügbaren Ergänzung besetzt und ein Warnhinweis angezeigt.
+      if (frontRows.includes(1)) {
+        const confirmedStroke = pool
+          .filter(p => p.strokeLead === 'ja')
+          .sort((a, b) => scoreStrokeAnchor(b) - scoreStrokeAnchor(a));
+
+        const firstRowPair = [];
+
+        if (confirmedStroke.length >= 2) {
+          firstRowPair.push(confirmedStroke[0], confirmedStroke[1]);
+        } else if (confirmedStroke.length === 1) {
+          firstRowPair.push(confirmedStroke[0]);
+          const fallback = pool
+            .filter(p => p.id !== confirmedStroke[0].id)
+            .sort((a, b) => scoreStrokeAnchor(b) - scoreStrokeAnchor(a))[0];
+          if (fallback) firstRowPair.push(fallback);
+          state.algorithmWarning = 'Achtung: Es ist nur eine bestätigte Schlagperson ausgewählt. Reihe 1 wurde mit der besten verfügbaren Ergänzung besetzt.';
+        } else {
+          firstRowPair.push(...pool.sort((a, b) => scoreStrokeAnchor(b) - scoreStrokeAnchor(a)).slice(0, 2));
+          state.algorithmWarning = 'Achtung: Es ist keine bestätigte Schlagperson ausgewählt. Reihe 1 konnte daher nur mit den besten verfügbaren Alternativen besetzt werden.';
+        }
+
+        firstRowPair.forEach(person => {
+          const index = pool.findIndex(x => x.id === person.id);
+          if (index >= 0) pool.splice(index, 1);
+        });
+
+        rowItems.push({ rowNumber: 1, pair: firstRowPair });
+      }
+
+      const remainingFrontRows = frontRows.filter(row => row !== 1);
+      const front = takeTop(pool, remainingFrontRows.length * 2, scoreFront);
       const middle = takeTop(pool, middleRows.length * 2, scoreMiddle);
       const back = takeTop(pool, backRows.length * 2, scoreBack);
 
-      const rowItems = [
-        ...assignPairsToRows(frontRows, front, 'front'),
+      rowItems.push(
+        ...assignPairsToRows(remainingFrontRows, front, 'front'),
         ...assignPairsToRows(middleRows, middle, 'middle'),
         ...assignPairsToRows(backRows, back, 'back'),
         ...Array.from(freeRows).map(rowNumber => ({ rowNumber, free: true }))
-      ].sort((a, b) => a.rowNumber - b.rowNumber);
+      );
 
-      return assignSides(rowItems);
+      // Sicherheitsnetz: Falls in Sonderkonfigurationen Personen übrig bleiben, füllen wir noch freie aktive Reihen auf.
+      if (pool.length > 0) {
+        const alreadyPlannedRows = new Set(rowItems.map(item => item.rowNumber));
+        const unfilledRows = activeRows.filter(row => !alreadyPlannedRows.has(row));
+        const additional = takeTop(pool, pool.length, p => scoreMiddle(p) + scoreBack(p));
+        rowItems.push(...assignPairsToRows(unfilledRows, additional, 'middle'));
+      }
+
+      return assignSides(rowItems.sort((a, b) => a.rowNumber - b.rowNumber));
     }
 
     function renderPlan(plan) {
@@ -1424,6 +1479,10 @@
 
         const plan = buildPlan(selected);
         renderPlan(plan);
+        if (state.algorithmWarning) {
+          warning.textContent = state.algorithmWarning;
+          warning.style.display = 'block';
+        }
       } catch (error) {
         warning.textContent = 'Fehler bei der Entschlüsselung/Berechnung: ' + error.message;
         warning.style.display = 'block';
