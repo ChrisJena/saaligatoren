@@ -1161,6 +1161,27 @@
       return rows;
     }
 
+    function normalizeBoolean(value) {
+      return value === true || value === 'true' || value === 1 || value === '1' || value === 'ja';
+    }
+
+    function canSitOnSide(person, targetSide) {
+      if (!person) return false;
+
+      const preferredSide = person.side;
+      const switchPossible = normalizeBoolean(person.switchPossible);
+
+      if (preferredSide === 'links') {
+        return targetSide === 'links' || switchPossible;
+      }
+
+      if (preferredSide === 'rechts') {
+        return targetSide === 'rechts' || switchPossible;
+      }
+
+      return true;
+    }
+
     function assignSides(rowItems) {
       let leftWeight = 0;
       let rightWeight = 0;
@@ -1173,33 +1194,146 @@
         const [a, b] = item.pair || [];
         if (!a || !b) return { rowNumber: item.rowNumber, left: a || null, right: b || null };
 
-        const aPrefersLeft = a.side === 'links';
-        const aPrefersRight = a.side === 'rechts';
-        const bPrefersLeft = b.side === 'links';
-        const bPrefersRight = b.side === 'rechts';
+        const normalAllowed = canSitOnSide(a, 'links') && canSitOnSide(b, 'rechts');
+        const swappedAllowed = canSitOnSide(b, 'links') && canSitOnSide(a, 'rechts');
 
-        let left = a;
-        let right = b;
+        let left;
+        let right;
 
-        if (aPrefersRight && !bPrefersRight) {
-          left = b;
-          right = a;
-        } else if (bPrefersLeft && !aPrefersLeft) {
-          left = b;
-          right = a;
-        } else {
+        if (normalAllowed && swappedAllowed) {
           const diffNormal = Math.abs((leftWeight + weightValue(a)) - (rightWeight + weightValue(b)));
           const diffSwap = Math.abs((leftWeight + weightValue(b)) - (rightWeight + weightValue(a)));
+
           if (diffSwap < diffNormal) {
             left = b;
             right = a;
+          } else {
+            left = a;
+            right = b;
           }
+        } else if (normalAllowed) {
+          left = a;
+          right = b;
+        } else if (swappedAllowed) {
+          left = b;
+          right = a;
+        } else {
+          throw new Error(`Für Reihe ${item.rowNumber} konnte keine zulässige Seitenverteilung gefunden werden. Bitte prüfe die Seitenangaben von ${fullName(a)} und ${fullName(b)}.`);
         }
 
         leftWeight += weightValue(left);
         rightWeight += weightValue(right);
         return { rowNumber: item.rowNumber, left, right };
       });
+    }
+
+    function validateSeatPlan(plan, selected) {
+      const errors = [];
+      const selectedIds = new Set(selected.map(person => String(person.id)));
+      const assignedIds = [];
+      const expectedRows = new Set(Array.from({ length: 10 }, (_, index) => index + 1));
+      const seenRows = new Set();
+      let leftCount = 0;
+      let rightCount = 0;
+
+      if (!Array.isArray(plan) || plan.length !== 10) {
+        errors.push(`Der Sitzplan enthält ${Array.isArray(plan) ? plan.length : 0} statt 10 Reihen.`);
+      }
+
+      for (const row of plan || []) {
+        const rowNumber = Number(row.rowNumber);
+
+        if (!expectedRows.has(rowNumber)) {
+          errors.push(`Ungültige Reihennummer im Sitzplan: ${row.rowNumber}.`);
+        }
+
+        if (seenRows.has(rowNumber)) {
+          errors.push(`Reihe ${rowNumber} ist mehrfach im Sitzplan enthalten.`);
+        }
+        seenRows.add(rowNumber);
+
+        const shouldBeFree = state.freeRows.has(rowNumber);
+        const isActuallyFree = !row.left && !row.right;
+
+        if (shouldBeFree && !isActuallyFree) {
+          errors.push(`Reihe ${rowNumber} sollte frei bleiben, ist aber besetzt.`);
+        }
+
+        if (!shouldBeFree && isActuallyFree) {
+          errors.push(`Reihe ${rowNumber} sollte besetzt sein, ist aber vollständig frei.`);
+        }
+
+        if (!shouldBeFree && (!row.left || !row.right)) {
+          errors.push(`Reihe ${rowNumber} ist nicht vollständig besetzt.`);
+        }
+
+        if (row.left) {
+          const id = String(row.left.id);
+          assignedIds.push(id);
+          leftCount += 1;
+
+          if (!selectedIds.has(id)) {
+            errors.push(`${fullName(row.left)} wurde zugewiesen, war aber nicht ausgewählt.`);
+          }
+
+          if (!canSitOnSide(row.left, 'links')) {
+            errors.push(`${fullName(row.left)} sitzt links, obwohl kein Wechsel von der angegebenen Seite möglich ist.`);
+          }
+        }
+
+        if (row.right) {
+          const id = String(row.right.id);
+          assignedIds.push(id);
+          rightCount += 1;
+
+          if (!selectedIds.has(id)) {
+            errors.push(`${fullName(row.right)} wurde zugewiesen, war aber nicht ausgewählt.`);
+          }
+
+          if (!canSitOnSide(row.right, 'rechts')) {
+            errors.push(`${fullName(row.right)} sitzt rechts, obwohl kein Wechsel von der angegebenen Seite möglich ist.`);
+          }
+        }
+      }
+
+      for (const rowNumber of expectedRows) {
+        if (!seenRows.has(rowNumber)) {
+          errors.push(`Reihe ${rowNumber} fehlt im Sitzplan.`);
+        }
+      }
+
+      const duplicateIds = [...new Set(assignedIds.filter((id, index) => assignedIds.indexOf(id) !== index))];
+      if (duplicateIds.length > 0) {
+        errors.push('Mindestens eine Person wurde mehrfach im Sitzplan vergeben.');
+      }
+
+      if (assignedIds.length !== selected.length) {
+        errors.push(`Es wurden ${assignedIds.length} von ${selected.length} ausgewählten Personen zugewiesen.`);
+      }
+
+      const missingPeople = selected.filter(person => !assignedIds.includes(String(person.id)));
+      if (missingPeople.length > 0) {
+        errors.push(`Nicht zugewiesen: ${missingPeople.map(fullName).join(', ')}.`);
+      }
+
+      if (leftCount !== rightCount) {
+        errors.push(`Die Bootsseiten sind unterschiedlich besetzt: links ${leftCount}, rechts ${rightCount}.`);
+      }
+
+      const rowOne = (plan || []).find(row => Number(row.rowNumber) === 1);
+      if (rowOne && !state.freeRows.has(1)) {
+        const selectedStrokeLeads = selected.filter(person => person.strokeLead === 'ja').length;
+        const rowOneStrokeLeads = [rowOne.left, rowOne.right]
+          .filter(Boolean)
+          .filter(person => person.strokeLead === 'ja').length;
+        const requiredStrokeLeads = Math.min(2, selectedStrokeLeads);
+
+        if (rowOneStrokeLeads < requiredStrokeLeads) {
+          errors.push(`Auf der Schlagbank sitzen nur ${rowOneStrokeLeads} bestätigte Schlagpersonen, obwohl ${requiredStrokeLeads} verfügbar sind.`);
+        }
+      }
+
+      return [...new Set(errors)];
     }
 
     function buildPlan(selected) {
@@ -1478,6 +1612,22 @@
         }
 
         const plan = buildPlan(selected);
+        const plausibilityErrors = validateSeatPlan(plan, selected);
+
+        if (plausibilityErrors.length > 0) {
+          state.currentSeatPlan = null;
+          state.currentBalanceSummary = null;
+          saveSessionBtn.disabled = true;
+          boatPlan.innerHTML = '';
+          resultHint.style.display = 'block';
+          resultHint.textContent = 'Der Sitzplan wurde wegen eines Plausibilitätsfehlers nicht angezeigt.';
+          warning.textContent = 'Plausibilitätsprüfung fehlgeschlagen:\n• ' + plausibilityErrors.join('\n• ');
+          warning.style.whiteSpace = 'pre-line';
+          warning.style.display = 'block';
+          return;
+        }
+
+        warning.style.whiteSpace = '';
         renderPlan(plan);
         if (state.algorithmWarning) {
           warning.textContent = state.algorithmWarning;
