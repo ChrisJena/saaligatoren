@@ -313,6 +313,12 @@
     .balance-card span { color: var(--muted); font-size: 0.84rem; }
 
     .boat-plan { display: grid; gap: 8px; }
+    .plan-actions { display:flex; gap:10px; flex-wrap:wrap; margin: 4px 0 12px; }
+    .seat-cell.editable { cursor:pointer; transition:0.16s ease; }
+    .seat-cell.editable:hover { border-color: rgba(166,227,0,.55); background: rgba(166,227,0,.08); }
+    .seat-cell.selected-seat { border-color: var(--green); box-shadow: 0 0 0 3px rgba(166,227,0,.14); background: rgba(166,227,0,.10); }
+    .edit-hint { color: var(--muted); font-size:.88rem; line-height:1.4; margin-bottom:10px; display:none; }
+
 
     .plan-row {
       display: grid;
@@ -712,12 +718,20 @@
           <div class="balance-card"><strong id="weightDiff">–</strong><span>Differenz</span></div>
           <div class="balance-card"><strong id="balanceRating">–</strong><span>Balance</span></div>
           <div class="balance-card"><strong id="frontRating">–</strong><span>Front/Takt</span></div>
+          <div class="balance-card"><strong id="frontBackShare">–</strong><span>Gewicht vorne/hinten (R1–5 / R6–10)</span></div>
+          <div class="balance-card"><strong id="frontBackDiff">–</strong><span>Differenz vorne/hinten</span></div>
         </div>
 
         <div id="resultHint" class="empty-state">
           Wähle links genau 20 Personen aus und klicke auf „Sitzplan berechnen“.
         </div>
 
+        <div class="plan-actions">
+          <button id="editPlanBtn" class="button-secondary" type="button" disabled>Sitzplan bearbeiten</button>
+          <button id="finishEditBtn" type="button" style="display:none;">Änderungen übernehmen</button>
+          <button id="cancelEditBtn" class="button-secondary" type="button" style="display:none;">Abbrechen</button>
+        </div>
+        <div id="editHint" class="edit-hint">Zum Tauschen nacheinander zwei besetzte Sitze anklicken. Seitenregeln und Plausibilität werden dabei weiterhin geprüft.</div>
         <div id="boatPlan" class="boat-plan"></div>
 
         <div class="history-panel">
@@ -727,7 +741,7 @@
               Bezeichnung speichern
               <input id="sessionTitle" type="text" placeholder="z. B. Training 1, Regatta-Besetzung, Testlauf" />
             </label>
-            <button id="saveSessionBtn" type="button" disabled>Sitzplan speichern</button>
+            <button id="saveSessionBtn" type="button" disabled>Tatsächliche Sitzverteilung speichern</button>
           </div>
           <div id="historyStatus" class="history-status"></div>
           <div id="historyList" class="history-list">
@@ -752,7 +766,12 @@
       currentBalanceSummary: null,
       sessions: [],
       freeRows: new Set(),
-      algorithmWarning: ''
+      algorithmWarning: '',
+      currentPlanObjects: null,
+      originalPlanBeforeEdit: null,
+      editMode: false,
+      selectedSeat: null,
+      previousRowMap: new Map()
     };
 
     const participantList = document.getElementById('participantList');
@@ -770,6 +789,10 @@
     const historyList = document.getElementById('historyList');
     const freeRowGrid = document.getElementById('freeRowGrid');
     const freeRowHint = document.getElementById('freeRowHint');
+    const editPlanBtn = document.getElementById('editPlanBtn');
+    const finishEditBtn = document.getElementById('finishEditBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    const editHint = document.getElementById('editHint');
 
     const loginScreen = document.getElementById('loginScreen');
     const loginForm = document.getElementById('loginForm');
@@ -861,6 +884,12 @@
       const maxBankDiffKg = bankDiffs.length ? Math.round(Math.max(...bankDiffs) * 10) / 10 : 0;
       const avgBankDiffKg = bankDiffs.length ? Math.round((bankDiffs.reduce((a, b) => a + b, 0) / bankDiffs.length) * 10) / 10 : 0;
       const frontQuality = plan.filter(r => r.rowNumber <= 3).flatMap(r => [r.left, r.right]).filter(Boolean).reduce((sum, p) => sum + p.rhythm, 0);
+      const frontWeight = plan.filter(r => r.rowNumber <= 5).reduce((sum, row) => sum + (row.left ? weightValue(row.left) : 0) + (row.right ? weightValue(row.right) : 0), 0);
+      const backWeight = plan.filter(r => r.rowNumber >= 6).reduce((sum, row) => sum + (row.left ? weightValue(row.left) : 0) + (row.right ? weightValue(row.right) : 0), 0);
+      const frontBackTotal = frontWeight + backWeight;
+      const frontPercent = frontBackTotal > 0 ? Number((frontWeight / frontBackTotal * 100).toFixed(1)) : 0;
+      const backPercent = frontBackTotal > 0 ? Number((backWeight / frontBackTotal * 100).toFixed(1)) : 0;
+      const frontBackDiffKg = Math.round(Math.abs(frontWeight - backWeight) * 10) / 10;
 
       return {
         leftCount: left,
@@ -871,7 +900,12 @@
         maxBankDiffKg,
         avgBankDiffKg,
         balanceRating: diff <= 10 && maxBankDiffKg <= 12 ? 'sehr gut' : diff <= 25 && maxBankDiffKg <= 20 ? 'gut' : 'prüfen',
-        frontRating: frontQuality >= 16 ? 'stark' : frontQuality >= 12 ? 'gut' : 'prüfen'
+        frontRating: frontQuality >= 16 ? 'stark' : frontQuality >= 12 ? 'gut' : 'prüfen',
+        frontWeightKg: Math.round(frontWeight * 10) / 10,
+        backWeightKg: Math.round(backWeight * 10) / 10,
+        frontPercent,
+        backPercent,
+        frontBackDiffKg
       };
     }
 
@@ -1077,6 +1111,40 @@
       return Number(person.heightCm || 175);
     }
 
+    function buildPreviousRowMap(trainingDate) {
+      const candidates = (state.sessions || []).filter(session => {
+        if (!session || !Array.isArray(session.seat_plan)) return false;
+        if (!trainingDate) return true;
+        return !session.training_date || session.training_date < trainingDate;
+      });
+
+      const latest = candidates[0];
+      const map = new Map();
+      if (!latest) return map;
+
+      latest.seat_plan.forEach(row => {
+        const rowNumber = Number(row.row);
+        [row.left, row.right].filter(Boolean).forEach(person => {
+          if (person.id != null && Number.isFinite(rowNumber)) map.set(String(person.id), rowNumber);
+        });
+      });
+      return map;
+    }
+
+    function historyZoneAdjustment(person, zone) {
+      const previousRow = state.previousRowMap.get(String(person.id));
+      if (!previousRow) return 0;
+      const centers = { front: 2, middle: 5.5, back: 9 };
+      const distance = Math.abs(previousRow - centers[zone]);
+      return 180 - distance * 55;
+    }
+
+    function pairHistoryDistance(pair, rowNumber) {
+      const values = (pair || []).map(person => state.previousRowMap.get(String(person.id))).filter(Boolean);
+      if (!values.length) return null;
+      return values.reduce((sum, value) => sum + Math.abs(value - rowNumber), 0) / values.length;
+    }
+
     function scoreStrokeAnchor(person) {
       const exp = experienceNumber(person.sprintExperience);
       const confirmedBonus = person.strokeLead === 'ja' ? 1000 : 0;
@@ -1091,18 +1159,18 @@
       const leadBonus = person.strokeLead === 'ja' ? 32 : person.strokeLead === 'vielleicht' ? 14 : 0;
       const lightBonus = Math.max(0, 88 - weightValue(person)) * 0.9;
       const compactBonus = Math.max(0, 180 - heightValue(person)) * 0.45;
-      return person.rhythm * 28 + exp * 13 + leadBonus + lightBonus + compactBonus - weightValue(person) * 0.18;
+      return person.rhythm * 28 + exp * 13 + leadBonus + lightBonus + compactBonus - weightValue(person) * 0.18 + historyZoneAdjustment(person, 'front');
     }
 
     function scoreMiddle(person) {
-      return weightValue(person) * 1.55 + heightValue(person) * 0.55 + person.strength * 24 + person.endurance * 13;
+      return weightValue(person) * 1.55 + heightValue(person) * 0.55 + person.strength * 24 + person.endurance * 13 + historyZoneAdjustment(person, 'middle');
     }
 
     function scoreBack(person) {
       const exp = experienceNumber(person.sprintExperience);
       const lowExperienceBonus = Math.max(0, 3 - exp) * 10;
       const lightBonus = Math.max(0, 90 - weightValue(person)) * 0.55;
-      return person.endurance * 18 + person.rhythm * 10 + person.strength * 8 + lowExperienceBonus + lightBonus - weightValue(person) * 0.22;
+      return person.endurance * 18 + person.rhythm * 10 + person.strength * 8 + lowExperienceBonus + lightBonus - weightValue(person) * 0.22 + historyZoneAdjustment(person, 'back');
     }
 
     function experienceNumber(value) {
@@ -1154,8 +1222,27 @@
         rowNumbers = [...rowNumbers].sort((a, b) => a - b);
       }
 
-      rowNumbers.forEach((rowNumber, index) => {
-        rows.push({ rowNumber, pair: pairs[index] || [] });
+      const remainingPairs = [...pairs];
+      rowNumbers.forEach((rowNumber) => {
+        if (!remainingPairs.length) {
+          rows.push({ rowNumber, pair: [] });
+          return;
+        }
+
+        let bestIndex = 0;
+        let bestScore = Infinity;
+        remainingPairs.forEach((pair, index) => {
+          const historyDistance = pairHistoryDistance(pair, rowNumber);
+          const historyPenalty = historyDistance == null ? 0 : historyDistance * 18;
+          const orderPenalty = index * 4;
+          const score = historyPenalty + orderPenalty;
+          if (score < bestScore) {
+            bestScore = score;
+            bestIndex = index;
+          }
+        });
+
+        rows.push({ rowNumber, pair: remainingPairs.splice(bestIndex, 1)[0] || [] });
       });
 
       return rows;
@@ -1405,9 +1492,26 @@
       return assignSides(rowItems.sort((a, b) => a.rowNumber - b.rowNumber));
     }
 
-    function renderPlan(plan) {
+    function updateBalanceDisplay(summary) {
+      document.getElementById('leftCount').textContent = summary.leftCount;
+      document.getElementById('rightCount').textContent = summary.rightCount;
+      document.getElementById('weightShare').textContent = `${summary.leftPercent.toFixed(1)} % / ${summary.rightPercent.toFixed(1)} %`;
+      document.getElementById('weightDiff').textContent = `${summary.weightDiffKg} kg`;
+      document.getElementById('balanceRating').textContent = `${summary.balanceRating} / Bank max. ${summary.maxBankDiffKg} kg`;
+      document.getElementById('frontRating').textContent = summary.frontRating;
+      document.getElementById('frontBackShare').textContent = `${summary.frontPercent.toFixed(1)} % / ${summary.backPercent.toFixed(1)} %`;
+      document.getElementById('frontBackDiff').textContent = `${summary.frontBackDiffKg} kg`;
+    }
+
+    function renderPlan(plan, preserveState = false) {
       resultHint.style.display = 'none';
       boatPlan.innerHTML = '';
+
+      if (!preserveState) {
+        state.currentPlanObjects = plan;
+        state.currentSeatPlan = serializeSeatPlan(plan);
+        state.currentBalanceSummary = createBalanceSummary(plan);
+      }
 
       plan.forEach((row) => {
         const leftName = row.left ? fullName(row.left) : 'frei';
@@ -1416,11 +1520,11 @@
         rowDiv.className = 'plan-row';
         rowDiv.innerHTML = `
           <div class="row-label">Reihe ${row.rowNumber}</div>
-          <div class="seat-cell">
+          <div class="seat-cell ${state.editMode && row.left ? 'editable' : ''}" data-row="${row.rowNumber}" data-side="left">
             <div class="seat-side">Links</div>
             <div class="seat-name">${leftName}</div>
           </div>
-          <div class="seat-cell">
+          <div class="seat-cell ${state.editMode && row.right ? 'editable' : ''}" data-row="${row.rowNumber}" data-side="right">
             <div class="seat-side">Rechts</div>
             <div class="seat-name">${rightName}</div>
           </div>
@@ -1428,18 +1532,103 @@
         boatPlan.appendChild(rowDiv);
       });
 
+      if (state.editMode) {
+        boatPlan.querySelectorAll('.seat-cell.editable').forEach(cell => cell.addEventListener('click', () => handleSeatClick(cell)));
+      }
+
       const summary = createBalanceSummary(plan);
       state.currentSeatPlan = serializeSeatPlan(plan);
       state.currentBalanceSummary = summary;
+      updateBalanceDisplay(summary);
       saveSessionBtn.disabled = false;
-      setHistoryStatus('Sitzplan berechnet. Du kannst ihn jetzt in der Trainingshistorie speichern.');
+      editPlanBtn.disabled = false;
+      if (!state.editMode) setHistoryStatus('Sitzplan berechnet. Vor dem Speichern kannst du ihn bei Bedarf an die tatsächlich gefahrene Besetzung anpassen.');
+    }
 
-      document.getElementById('leftCount').textContent = summary.leftCount;
-      document.getElementById('rightCount').textContent = summary.rightCount;
-      document.getElementById('weightShare').textContent = `${summary.leftPercent.toFixed(1)} % / ${summary.rightPercent.toFixed(1)} %`;
-      document.getElementById('weightDiff').textContent = `${summary.weightDiffKg} kg`;
-      document.getElementById('balanceRating').textContent = `${summary.balanceRating} / Bank max. ${summary.maxBankDiffKg} kg`;
-      document.getElementById('frontRating').textContent = summary.frontRating;
+    function getSeatRef(plan, rowNumber, side) {
+      const row = plan.find(item => Number(item.rowNumber) === Number(rowNumber));
+      if (!row) return null;
+      return { row, side, person: row[side] };
+    }
+
+    function handleSeatClick(cell) {
+      const rowNumber = Number(cell.dataset.row);
+      const side = cell.dataset.side;
+      const ref = getSeatRef(state.currentPlanObjects, rowNumber, side);
+      if (!ref || !ref.person) return;
+
+      if (!state.selectedSeat) {
+        state.selectedSeat = { rowNumber, side };
+        cell.classList.add('selected-seat');
+        return;
+      }
+
+      const first = getSeatRef(state.currentPlanObjects, state.selectedSeat.rowNumber, state.selectedSeat.side);
+      const second = ref;
+      if (!first || !second) return;
+
+      const firstPerson = first.person;
+      const secondPerson = second.person;
+
+      if (!canSitOnSide(firstPerson, second.side === 'left' ? 'links' : 'rechts') || !canSitOnSide(secondPerson, first.side === 'left' ? 'links' : 'rechts')) {
+        setHistoryStatus('Dieser Tausch ist wegen der festgelegten Paddelseite nicht zulässig.', true);
+        state.selectedSeat = null;
+        renderPlan(state.currentPlanObjects, true);
+        return;
+      }
+
+      first.row[first.side] = secondPerson;
+      second.row[second.side] = firstPerson;
+
+      const selected = state.participants.filter(p => state.selectedIds.has(p.id));
+      const errors = validateSeatPlan(state.currentPlanObjects, selected);
+      if (errors.length) {
+        first.row[first.side] = firstPerson;
+        second.row[second.side] = secondPerson;
+        setHistoryStatus('Tausch verworfen: ' + errors[0], true);
+      } else {
+        setHistoryStatus('Tausch übernommen. Weitere Sitze können angepasst werden.');
+      }
+
+      state.selectedSeat = null;
+      renderPlan(state.currentPlanObjects, true);
+    }
+
+    function enterEditMode() {
+      if (!state.currentPlanObjects) return;
+      state.originalPlanBeforeEdit = state.currentPlanObjects.map(row => ({ ...row }));
+      state.editMode = true;
+      state.selectedSeat = null;
+      editPlanBtn.style.display = 'none';
+      finishEditBtn.style.display = '';
+      cancelEditBtn.style.display = '';
+      editHint.style.display = 'block';
+      renderPlan(state.currentPlanObjects, true);
+    }
+
+    function finishEditMode() {
+      state.editMode = false;
+      state.selectedSeat = null;
+      state.originalPlanBeforeEdit = null;
+      editPlanBtn.style.display = '';
+      finishEditBtn.style.display = 'none';
+      cancelEditBtn.style.display = 'none';
+      editHint.style.display = 'none';
+      renderPlan(state.currentPlanObjects, true);
+      setHistoryStatus('Tatsächliche Sitzverteilung übernommen. Beim Speichern wird genau dieser Plan als Trainingshistorie hinterlegt.');
+    }
+
+    function cancelEditMode() {
+      if (state.originalPlanBeforeEdit) state.currentPlanObjects = state.originalPlanBeforeEdit.map(row => ({ ...row }));
+      state.editMode = false;
+      state.selectedSeat = null;
+      state.originalPlanBeforeEdit = null;
+      editPlanBtn.style.display = '';
+      finishEditBtn.style.display = 'none';
+      cancelEditBtn.style.display = 'none';
+      editHint.style.display = 'none';
+      renderPlan(state.currentPlanObjects, true);
+      setHistoryStatus('Manuelle Änderungen wurden verworfen.');
     }
 
     function renderStoredPlan(seatPlan, summary = null) {
@@ -1470,6 +1659,8 @@
         document.getElementById('weightDiff').textContent = `${summary.weightDiffKg ?? '–'} kg`;
         document.getElementById('balanceRating').textContent = summary.balanceRating ? `${summary.balanceRating} / Bank max. ${summary.maxBankDiffKg ?? '–'} kg` : '–';
         document.getElementById('frontRating').textContent = summary.frontRating ?? '–';
+        document.getElementById('frontBackShare').textContent = summary.frontPercent != null ? `${Number(summary.frontPercent).toFixed(1)} % / ${Number(summary.backPercent || 0).toFixed(1)} %` : '–';
+        document.getElementById('frontBackDiff').textContent = summary.frontBackDiffKg != null ? `${summary.frontBackDiffKg} kg` : '–';
       }
     }
 
@@ -1560,7 +1751,7 @@
 
         if (error) throw error;
         sessionTitleInput.value = '';
-        setHistoryStatus(`Sitzplan „${title}“ wurde gespeichert.`);
+        setHistoryStatus(`Tatsächliche Sitzverteilung „${title}“ wurde gespeichert und wird beim nächsten Training als Historie berücksichtigt.`);
         await loadTrainingSessions();
       } catch (error) {
         setHistoryStatus('Sitzplan konnte nicht gespeichert werden: ' + error.message, true);
@@ -1611,6 +1802,8 @@
           person.weight = await decryptWeight(person.weightEncrypted, privateKey);
         }
 
+        const trainingDate = document.getElementById('trainingDate').value;
+        state.previousRowMap = buildPreviousRowMap(trainingDate);
         const plan = buildPlan(selected);
         const plausibilityErrors = validateSeatPlan(plan, selected);
 
@@ -1628,6 +1821,13 @@
         }
 
         warning.style.whiteSpace = '';
+        state.editMode = false;
+        state.selectedSeat = null;
+        state.originalPlanBeforeEdit = null;
+        editPlanBtn.style.display = '';
+        finishEditBtn.style.display = 'none';
+        cancelEditBtn.style.display = 'none';
+        editHint.style.display = 'none';
         renderPlan(plan);
         if (state.algorithmWarning) {
           warning.textContent = state.algorithmWarning;
@@ -1639,6 +1839,9 @@
       }
     }
 
+    editPlanBtn.addEventListener('click', enterEditMode);
+    finishEditBtn.addEventListener('click', finishEditMode);
+    cancelEditBtn.addEventListener('click', cancelEditMode);
     saveSessionBtn.addEventListener('click', saveCurrentSession);
 
     freeRowGrid.querySelectorAll('input[type="checkbox"]').forEach(box => {
@@ -1686,6 +1889,8 @@
         document.getElementById('weightDiff').textContent = '–';
         document.getElementById('balanceRating').textContent = '–';
         document.getElementById('frontRating').textContent = '–';
+        document.getElementById('frontBackShare').textContent = '–';
+        document.getElementById('frontBackDiff').textContent = '–';
         renderParticipants();
       } catch (error) {
         warning.textContent = 'Fehler beim Löschen: ' + error.message;
